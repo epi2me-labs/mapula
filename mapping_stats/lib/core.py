@@ -1,46 +1,30 @@
 import abc
-import pysam
 from typing import TypeVar
 
 
 class BaseSubcommand(abc.ABC):
-
     @abc.abstractclassmethod
     def execute():
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def load():
-        raise NotImplementedError
-    
-    @abc.abstractmethod
-    def write():
         raise NotImplementedError
 
 
 class UpdatingStatsItem(abc.ABC):
 
+    # The signature of this method is
+    # expected to change when implemented by
+    # a derived class, hence follows the
+    # Liskov substitution principle.
     @abc.abstractmethod
-    def update(
-        self,
-        aln: pysam.AlignedSegment,
-        **kwargs
-    ):
+    def update(self, *args, **kwargs):
         raise NotImplementedError
 
     @abc.abstractclassmethod
-    def fromdict(
-        cls,
-        data: dict
-    ):
+    def fromdict(cls, data: dict):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def __add__(
-        self, 
-        new
-    ):
+    def __add__(self, new):
         raise NotImplementedError
 
 
-U = TypeVar('U', bound=UpdatingStatsItem)
+U = TypeVar("U", bound=UpdatingStatsItem)

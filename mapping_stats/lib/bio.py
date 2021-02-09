@@ -1,88 +1,27 @@
-import os
 import math
 import pysam
 from typing import Union, Iterable, List
 from mapping_stats.lib.const import UNKNOWN
 
-LOOKUP = [pow(10, -.1 * q) for q in range(100)]
-
-
-class FastaFile(pysam.FastaFile):
-    """
-    Adds some additional functionality to
-    Pysams FastaFile object.
-    """
-    def get_reference(
-        self,
-        name: str
-    ) -> Union[str, None]:
-        for ref in self.references:
-            if name == ref:
-                return ref
-
-    def has_reference(
-        self,
-        name: str
-    ) -> bool:
-        return bool(self.get_reference(
-            name
-        ))
-
-
-class ReferenceFastas(object):
-
-    def __init__(
-        self,
-        fasta_paths: list
-    ) -> None:
-        self.fastas = self.load_fastas(fasta_paths)
-
-    @staticmethod
-    def load_fastas(
-        paths: list
-    ) -> dict:
-        return {
-            os.path.basename(p): FastaFile(p)
-            for p in paths
-        }
-
-    def get_fasta_file(
-        self,
-        name: str
-    ) -> FastaFile:
-        return self.fastas.get(name)
-
-    def get_fasta_name(
-        self,
-        ref: str,
-    ) -> str:
-        for name, file in self.fastas.items():
-            if file.has_reference(ref):
-                return name
+LOOKUP = [pow(10, -0.1 * q) for q in range(100)]
 
 
 def get_alignment_tag(
-    alignment: pysam.AlignedSegment,
-    tag: str,
-    default: str = UNKNOWN
+    alignment: pysam.AlignedSegment, tag: str, default: str = UNKNOWN
 ):
     """
-    Inspects the tags of the input AlignedSegment 
-    and checks for the presence of a barcode tag. If 
-    it exists, returns the barcode labeled within, else 
-    returns a string of 'Unknown'.
+    Inspects the tags of the input AlignedSegment
+    and checks for the presence of a barcode tag.
+    If it exists, returns the barcode labeled within,
+    else returns a string of 'Unknown'.
     """
-    return alignment.get_tag(tag) if alignment.has_tag(
-        tag
-    ) else default
+    return alignment.get_tag(tag) if alignment.has_tag(tag) else default
 
-def get_median_from_frequency_dist(
-    arr: Iterable,
-    width: Union[int, float]
-):
+
+def get_median_from_frequency_dist(arr: Iterable, width: Union[int, float]):
     """
-    Returns the median value from an array whose 
-    positions represent frequency counts of values 
+    Returns the median value from an array whose
+    positions represent frequency counts of values
     at that index in a given range.
     """
     arr_sum: int = sum(arr)
@@ -98,23 +37,22 @@ def get_median_from_frequency_dist(
         if accumulator > half_way_pos:
             if lower is not None:
                 avg = ((lower * width) + (idx * width)) / 2
-                return float(format(avg, '.2f'))
+                return float(format(avg, ".2f"))
 
-            return float(format(idx * width, '.2f'))
+            return float(format(idx * width, ".2f"))
 
         if accumulator == half_way_pos:
             if is_odd:
-                return float(format(idx * width, '.2f'))
+                return float(format(idx * width, ".2f"))
 
             if lower is None:
                 lower = idx
                 continue
 
-def get_alignment_accuracy(
-    alignment: pysam.AlignedSegment
-):
+
+def get_alignment_accuracy(alignment: pysam.AlignedSegment):
     """
-    Returns the percentage accuracy of a given aligned 
+    Returns the percentage accuracy of a given aligned
     segment as a float.
     """
     if alignment.is_unmapped:
@@ -141,10 +79,9 @@ def get_alignment_accuracy(
 
     return accuracy
 
+
 def get_n50_from_frequency_dist(
-    arr: Iterable,
-    width: int,
-    total: int
+    arr: Iterable, width: int, total: int
 ) -> Union[float, int]:
     """
     Calculates the N50 from an array whose positions represent
@@ -172,12 +109,11 @@ def get_n50_from_frequency_dist(
 
     return n50
 
-def get_alignment_mean_qscore(
-    scores: List[int]
-) -> Union[float, None]:
+
+def get_alignment_mean_qscore(scores: List[int]) -> Union[float, None]:
     """
     Returns the phred score corresponding to the mean of
-    the probabilities associated with the phred scores 
+    the probabilities associated with the phred scores
     provided.
     """
     if scores is None:
@@ -194,12 +130,10 @@ def get_alignment_mean_qscore(
 
     return -10.0 * math.log10(mean_prob)
 
-def get_alignment_coverage(
-    query_alignment_length: int,
-    reference_length: int
-):
+
+def get_alignment_coverage(query_alignment_length: int, reference_length: int):
     """
-    Computes the percentage coverage of a given alignment 
+    Computes the percentage coverage of a given alignment
     length of the reference length.
 
     query_alignment_length: length of the aligned segment

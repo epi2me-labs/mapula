@@ -1,3 +1,3 @@
-UNMAPPED = 'unmapped'
-UNKNOWN = 'unknown'
-UNCLASSIFIED = 'unclassified'
+UNMAPPED = "unmapped"
+UNKNOWN = "unknown"
+UNCLASSIFIED = "unclassified"
