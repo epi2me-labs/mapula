@@ -17,9 +17,9 @@ develop: venv/bin/activate
 test: venv/bin/activate
 	@echo "---No tests currently---"
 	#${IN_VENV} && pip install flake8 flake8-rst-docstrings flake8-docstrings flake8-import-order
-	#${IN_VENV} && flake8 ${mapula} \
-	#	--import-order-style google --application-import-names ${mapula} \
-	#	--statistics
+	#${IN_VENV} && flake8 ${PROJECT} \
+	#  --import-order-style google --application-import-names ${PROJECT} \
+	#  --statistics
 
 IN_BUILD=. ./pypi_build/bin/activate
 pypi_build/bin/activate:
@@ -33,5 +33,5 @@ sdist: pypi_build/bin/activate
 
 .PHONY: clean
 clean:
-	rm -rf __pycache__ dist build venv ${mapula}.egg-info tmp docs/_build
+	rm -rf __pycache__ dist build venv ${PROJECT}.egg-info tmp docs/_build
 
