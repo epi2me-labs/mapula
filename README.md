@@ -5,13 +5,11 @@ This package provides a command line tool that is able to parse alignments in `S
 Mapula provides several subcommands, use `--help` with each
 one to find detailed usage instructions.
 
----
 ## Installation
 
 ```
 pip install mapula
 ```
----
 ## Usage: count
 ```
 $ mapula count -h
