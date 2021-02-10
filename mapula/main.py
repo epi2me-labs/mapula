@@ -11,7 +11,7 @@ class MappingStats(object):
             usage="""mapping-stats <command> [<args>]
 
 Available subcommands are:
-   gather       Gather mapping stats from a SAM/BAM file
+   count        Count mapping stats from a SAM/BAM file
    aggregate    Combine mapping stats .JSON outputs
 """,
         )
@@ -26,7 +26,7 @@ Available subcommands are:
 
         getattr(self, args.command)(sys.argv[2:])
 
-    def gather(self, argv):
+    def count(self, argv):
         CountMappingStats.execute(argv)
 
     def aggregate(self, argv):

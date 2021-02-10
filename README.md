@@ -1,40 +1,135 @@
-# Mapping Stats
+# Mapula
 
-This package is designed to provide a command line tool that is able to
-parse alignments in `SAM` format and from them produce a range of useful
-stats.
+This package provides a command line tool that is able to parse alignments in `SAM` format and produce a range of useful stats.
 
-As they are parsed, alignments are binned into groups based on their `run_id`,
-the name of the file containing the reference sequence they aligned to (or not, as in
-unmapped reads) and their assigned barcode (if that information is available).
-
-The statistics are then calculated per-group, as well as per-reference within
-each group, and are output in `CSV` as well as JSON format.
-
-In addition, the `ercc` subcommand provides the same functionality, but with
-the added requirement that a `CSV` of expected counts will be provided. With this,
-correlations between the expected and observed amounts of each ERCC reference
-can be determined, which is useful in control experiments.
-
-
-## Usage
----
-Mapping Stats provides several subcommands, use `--help` with each
+Mapula provides several subcommands, use `--help` with each
 one to find detailed usage instructions.
 
+---
+## Installation
+
 ```
-$ mapping_stats -h
-usage: mapping-stats <command> [<args>]
+pip install mapula
+```
+---
+## Usage: count
+```
+$ mapula count -h
+usage: mapula [-h] [-s SAM] [-o OUT] [-j JSON] -r [REFS [REFS ...]] [-e EXP]
 
-Available subcommands are:
-   gather       Gather mapping stats from a SAM/BAM file
-   aggregate    Combine mapping stats .JSON outputs
-
-Collects stats from SAM/BAM files
-
-positional arguments:
-  command     Subcommand to run
+Counts mapping stats from a SAM/BAM file
 
 optional arguments:
-  -h, --help  show this help message and exit
+  -h, --help            show this help message and exit
+  -s SAM, --sam SAM     Input sam/bam file. (default: stdin)
+  -o OUT, --out OUT     Output sam file. Use - for piping out. (default: None)
+  -j JSON, --json JSON  Name of the output json (default: stats.mapula.json)
+  -r [REFS [REFS ...]], --refs [REFS [REFS ...]]
+                        List of references to which alignments have been made
+  -e EXP, --exp EXP     A .CSV file containing expected counts by reference name
 ```
+---
+### **Inputs**
+
+An example invocation is as follows:
+
+```
+mapula gather -s aligned.sam -r reference_1.fasta reference_2.fasta
+```
+
+An explanation of the available arguments follows:
+- `-s` SAM/BAM
+  - A path to a `SAM` or `BAM` file. Alignments will be parsed from this file and used to derive stats. Mapula also supports piping in, in which case this argument must be omitted e.g.:
+    - ```minimap2 -y -ax map-ont ref.fasta *.fastq | mapula gather -r...etc```
+- `-r` references
+  - You must supply `mapula gather` reference `.fasta` files against which the alignments were made, this can take the form:
+    - ```mapula gather -r reference_1.fasta reference_2.fasta```
+- `-e` expected counts csv
+  - In order to calculate correlations between observed and expected counts for a given set of reference sequences, you must use `-e` to provide a `.csv` containing two columns: 
+    - `reference` (i.e. name of the reference sequence)
+    - `expected_count`
+- `-j` jout
+  - If provided, the `.json` output will be written at this location instead of `stats.mapula.json`
+- `-o` sout
+  - If provided, a `SAM` file constructed from the input records will be written to stdout. This argument is primarily used for piping, as in:
+    - ```... | mapula gather -o | samtools sort - > sorted.bam```
+
+---
+### **Stats & Terminology**
+For each alignment processed, `mapula count` updates various measurements.
+
+#### Simple metrics
+- alignment_count
+- read_count
+- primary_count
+- secondary_count
+- supplementary_count
+- total_base_pairs
+
+#### Distributions
+- avg. alignment accuracy
+- avg. read quality
+- avg. read length
+- reference coverage
+
+#### Derived
+- read n50
+- median accuracy
+- median quality
+- cov80_count
+- cov80_percent
+
+Each of these stats are tracked at three levels:
+
+1) **Global**: overall stats created from all alignments processed
+2) **Group**: stats binned by group, i.e. run_id, barcode and reference file name
+3) **Reference**: stats for every reference observed within a group
+
+In addition, at the **global** and **group** levels, we also track correlations and their p_values:
+
+- spearmans
+- spearmans_p
+- pearsons
+- pearsons_p
+
+By default these correlations will be 0, unless a `.csv` containing expected counts is provided using `-e`.
+
+---
+### **Outputs**
+Mapula gather writes out several outputs by default.
+
+#### JSON
+By default, a `.json` file is produced, which has a nested structure, as per the levels described above:
+```
+# Top level
+{
+    ...global_stats
+    children: {
+      [group_name]: {
+        ...group_stats,
+        children {
+          [reference_name]: {
+            ...reference_stats
+          },
+          ...other_references
+        }
+      },
+      ...other_groups
+    }
+}
+
+```
+The default filename of the `.json` file is `stats.mapula.json`.
+
+The `.json` file is designed to support detailed downstream analysis. It is possible to disable creating it, however, if it is uneeded.
+
+### CSV
+Also by default, a set of `.csv` files are created which provide a more minimal representation of the stats collected at the 3 different levels.
+
+By default, they are named:
+
+1) `global.mapula.csv`
+2) `groups.mapula.csv`
+3) `reference.mapula.csv`
+
+They contain the same overall stats as the `.json` file, but without the inclusion of the frequency distributions for accuracy, coverage, read length and read quality. However, the stats derived from these distributions, i.e. read n50, median accuracy, median quality and cov80 are retained.

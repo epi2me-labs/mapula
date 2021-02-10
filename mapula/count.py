@@ -238,7 +238,7 @@ class CountMappingStats(BaseSubcommand):
     @classmethod
     def execute(cls, argv) -> None:
         parser = argparse.ArgumentParser(
-            description="Gather mapping stats from a SAM/BAM file",
+            description="Count mapping stats from a SAM/BAM file",
             formatter_class=RawTextHelpFormatter,
         )
 
