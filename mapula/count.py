@@ -195,18 +195,18 @@ class CountMappingStats(BaseSubcommand):
     def __init__(
         self,
         sam_path: str,
-        out_path: Union[str, None],
+        sam_out: Union[str, None],
         json_path: str,
         fasta_paths: List[str],
         exp_counts_path: str = None,
     ) -> None:
         self.json_path = json_path
-        self.out_path = out_path
+        self.sam_out = sam_out
         self.sam_path = sam_path
 
         self.records = AlignmentFile(sam_path, "r")
-        if out_path:
-            self.outfile = AlignmentFile(out_path, "w", template=self.records)
+        if sam_out:
+            self.outfile = AlignmentFile(sam_out, "w", template=self.records)
         self.refmap = RefMap(fasta_paths, exp_counts_path)
 
         self.observed = self.load()
@@ -225,7 +225,7 @@ class CountMappingStats(BaseSubcommand):
         self,
     ) -> None:
         for aln in self.records.fetch(until_eof=True):
-            if self.out_path:
+            if self.sam_out:
                 self.outfile.write(aln)
             self.observed.update(aln, self.refmap)
 
@@ -250,21 +250,6 @@ class CountMappingStats(BaseSubcommand):
         )
 
         parser.add_argument(
-            "-o",
-            "--out",
-            default=None,
-            help="Output sam file. Use - for piping out. (default: None)",
-        )
-
-        parser.add_argument(
-            "-j",
-            "--json",
-            required=False,
-            default="stats.mapula.json",
-            help="Name of the output json (default: stats.mapula.json)",
-        )
-
-        parser.add_argument(
             "-r",
             "--refs",
             nargs="*",
@@ -280,11 +265,26 @@ class CountMappingStats(BaseSubcommand):
             help="A .CSV file containing expected counts by reference name",
         )
 
+        parser.add_argument(
+            "-o",
+            "--sam_out",
+            default=None,
+            help="Outputs a sam file from the parsed alignments. Use - for piping out. (default: None)",
+        )
+
+        parser.add_argument(
+            "-j",
+            "--json_path",
+            required=False,
+            default="stats.mapula.json",
+            help="Name of the output json (default: stats.mapula.json)",
+        )
+
         args = parser.parse_args(argv)
         cls(
             sam_path=args.sam,
-            out_path=args.out,
-            json_path=args.json,
+            sam_out=args.sam_out,
+            json_path=args.json_path,
             fasta_paths=args.refs,
             exp_counts_path=args.exp,
         )
