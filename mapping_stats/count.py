@@ -131,7 +131,7 @@ class AlignmentGroup(
             if not self.children.get(rn):
                 self.children[rn] = rv
             else:
-                self.children[rn] += rv
+                self.children[rn].add(rv, refmap)
         self._child_type._add(self, new)
         self.update_correlations(self.children, refmap)
         return self
@@ -181,7 +181,7 @@ class Alignments(CoreStats, CorrelationStats, MappingStatsContainer):
             if not self.children.get(gn):
                 self.children[gn] = gv
             else:
-                self.children[gn] += gv
+                self.children[gn].add(gv, refmap)
         return self
 
 
@@ -203,7 +203,6 @@ class CountMappingStats(BaseSubcommand):
         self.json_path = json_path
         self.out_path = out_path
         self.sam_path = sam_path
-        self.fasta_paths = fasta_paths
 
         self.records = AlignmentFile(sam_path, "r")
         if out_path:
