@@ -1,16 +1,25 @@
+![Oxford Nanopore Technologies logo](https://github.com/epi2me-labs/mapping-stats/raw/master/images/ONT_logo_590x106.png)
+
+
 # Mapula
 
-This package provides a command line tool that is able to parse alignments in `SAM` format and produce a range of useful stats.
+This package provides a command line tool that is able to parse alignments in
+`SAM` format and produce a range of useful stats.
 
-Mapula provides several subcommands, use `--help` with each
-one to find detailed usage instructions.
+Mapula provides several subcommands, use `--help` with each one to find
+detailed usage instructions.
 
 ## Installation
+
+(Count) Mapula can be installed in the usual Python tradition:
 
 ```
 pip install mapula
 ```
+
+
 ## Usage: count
+
 ```
 $ mapula count -h
 usage: mapula [-h] [-s SAM] [-o OUT] [-j JSON] -r [REFS [REFS ...]] [-e EXP]
@@ -27,7 +36,9 @@ optional arguments:
   -e EXP, --exp EXP     A .CSV file containing expected counts by reference name
 ```
 ---
-### **Inputs**
+
+
+### Inputs
 
 An example invocation is as follows:
 
@@ -52,8 +63,8 @@ An explanation of the available arguments follows:
   - If provided, a `SAM` file constructed from the input records will be written to stdout. This argument is primarily used for piping, as in:
     - ```... | mapula gather -o | samtools sort - > sorted.bam```
 
----
-### **Stats & Terminology**
+
+### Stats & Terminology
 For each alignment processed, `mapula count` updates various measurements.
 
 #### Simple metrics
@@ -92,8 +103,9 @@ In addition, at the **global** and **group** levels, we also track correlations 
 
 By default these correlations will be 0, unless a `.csv` containing expected counts is provided using `-e`.
 
----
-### **Outputs**
+
+
+### Outputs
 Mapula gather writes out several outputs by default.
 
 #### JSON
@@ -130,4 +142,29 @@ By default, they are named:
 2) `groups.mapula.csv`
 3) `reference.mapula.csv`
 
+spearmans_rho_pvalue
+> The p-value for the spearmans_rho statistic, it is the probability that the same correlation could have occurred by chance. Lower is better.
+
 They contain the same overall stats as the `.json` file, but without the inclusion of the frequency distributions for accuracy, coverage, read length and read quality. However, the stats derived from these distributions, i.e. read n50, median accuracy, median quality and cov80 are retained.
+
+
+Help
+----
+
+**Licence and Copyright**
+
+© 2021- Oxford Nanopore Technologies Ltd.
+
+`mapula` is distributed under the terms of the Mozilla Public License 2.0.
+
+**Research Release**
+
+Research releases are provided as technology demonstrators to provide early
+access to features or stimulate Community development of tools. Support for
+this software will be minimal and is only provided directly by the developers.
+Feature requests, improvements, and discussions are welcome and can be
+implemented by forking and pull requests. However much as we would
+like to rectify every issue and piece of feedback users may have, the
+developers may have limited resource for support of this software. Research
+releases may be unstable and subject to rapid iteration by Oxford Nanopore
+Technologies.
