@@ -48,9 +48,9 @@ An explanation of the available arguments follows:
   - In order to calculate correlations between observed and expected counts for a given set of reference sequences, you must use `-e` to provide a `.csv` containing two columns: 
     - `reference` (i.e. name of the reference sequence)
     - `expected_count`
-- `-j` jout
+- `-j` json_path
   - If provided, the `.json` output will be written at this location instead of `stats.mapula.json`
-- `-o` sout
+- `-o` sam_out
   - If provided, a `SAM` file constructed from the input records will be written to stdout. This argument is primarily used for piping, as in:
     - ```... | mapula gather -o | samtools sort - > sorted.bam```
 
