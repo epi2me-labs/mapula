@@ -6,12 +6,12 @@ from typing import List, Union
 from pysam import AlignmentFile
 from dataclasses import dataclass
 from argparse import RawTextHelpFormatter
-from mapping_stats.lib.refmap import RefMap
-from mapping_stats.lib.bio import get_alignment_tag
-from mapping_stats.lib.stats import CoreStats, CorrelationStats
-from mapping_stats.lib.const import UNKNOWN, UNMAPPED, UNCLASSIFIED
-from mapping_stats.lib.core import BaseSubcommand, MappingStatsContainer
-from mapping_stats.lib.utils import (
+from mapula.lib.refmap import RefMap
+from mapula.lib.bio import get_alignment_tag
+from mapula.lib.stats import CoreStats, CorrelationStats
+from mapula.lib.const import UNKNOWN, UNMAPPED, UNCLASSIFIED
+from mapula.lib.core import BaseSubcommand, MappingStatsContainer
+from mapula.lib.utils import (
     write_data,
     load_data,
     get_data_slots,

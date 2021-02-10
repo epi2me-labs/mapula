@@ -1,7 +1,7 @@
 import math
 import pysam
 from typing import Union, Iterable, List
-from mapping_stats.lib.const import UNKNOWN
+from mapula.lib.const import UNKNOWN
 
 LOOKUP = [pow(10, -0.1 * q) for q in range(100)]
 

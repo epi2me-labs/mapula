@@ -2,8 +2,8 @@ import pysam
 from typing import Union
 from dataclasses import dataclass, field
 from scipy.stats import pearsonr, spearmanr
-from mapping_stats.lib.refmap import RefMap
-from mapping_stats.lib.bio import (
+from mapula.lib.refmap import RefMap
+from mapula.lib.bio import (
     get_alignment_mean_qscore,
     get_median_from_frequency_dist,
     get_alignment_accuracy,

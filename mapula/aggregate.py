@@ -2,10 +2,10 @@ import os
 import argparse
 import dataclasses
 from typing import List
-from mapping_stats.count import Alignments
-from mapping_stats.lib.refmap import RefMap
-from mapping_stats.lib.core import BaseSubcommand
-from mapping_stats.lib.utils import load_data, write_data
+from mapula.count import Alignments
+from mapula.lib.refmap import RefMap
+from mapula.lib.core import BaseSubcommand
+from mapula.lib.utils import load_data, write_data
 
 
 class AggregateMappingStats(BaseSubcommand):

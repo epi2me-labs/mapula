@@ -1,7 +1,7 @@
 import sys
 import argparse
-from mapping_stats.count import CountMappingStats
-from mapping_stats.aggregate import AggregateMappingStats
+from mapula.count import CountMappingStats
+from mapula.aggregate import AggregateMappingStats
 
 
 class MappingStats(object):

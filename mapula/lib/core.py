@@ -2,7 +2,7 @@ import abc
 import pysam
 import dataclasses
 from dataclasses import dataclass, field
-from mapping_stats.lib.refmap import RefMap
+from mapula.lib.refmap import RefMap
 
 
 class BaseSubcommand(abc.ABC):
