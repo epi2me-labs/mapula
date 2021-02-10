@@ -1,30 +1,46 @@
 import abc
-from typing import TypeVar
+import pysam
+import dataclasses
+from dataclasses import dataclass, field
+from mapping_stats.lib.refmap import RefMap
 
 
 class BaseSubcommand(abc.ABC):
     @abc.abstractclassmethod
-    def execute():
+    def execute(cls, argv):
         raise NotImplementedError
 
 
-class UpdatingStatsItem(abc.ABC):
-
-    # The signature of this method is
-    # expected to change when implemented by
-    # a derived class, hence follows the
-    # Liskov substitution principle.
+@dataclass
+class BaseMappingStatsContainer(abc.ABC):
     @abc.abstractmethod
-    def update(self, *args, **kwargs):
+    def update(self, aln: pysam.AlignedSegment, refmap: RefMap):
         raise NotImplementedError
 
     @abc.abstractclassmethod
-    def fromdict(cls, data: dict):
+    def fromdict(cls, **data: dict):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def __add__(self, new):
+    def asdict(self):
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def add(self, new, refmap):
         raise NotImplementedError
 
 
-U = TypeVar("U", bound=UpdatingStatsItem)
+@dataclass
+class MappingStatsContainer(BaseMappingStatsContainer):
+    _child_type = None
+    children: dict = field(default_factory=lambda: {})
+
+    @classmethod
+    def fromdict(cls, **data: dict):
+        for key, val in data.get("children", {}).items():
+            data["children"][key] = cls._child_type.fromdict(**val)
+        return cls(**data)
+
+    def asdict(self):
+        data = dataclasses.asdict(self)
+        return {k: v for k, v in data.items() if not (k.startswith("_") or v is None)}

@@ -2,7 +2,7 @@ import os
 import argparse
 import dataclasses
 from typing import List
-from mapping_stats.gather import Alignments
+from mapping_stats.count import Alignments
 from mapping_stats.lib.core import BaseSubcommand
 from mapping_stats.lib.utils import load_data, write_data
 

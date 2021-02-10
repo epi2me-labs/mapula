@@ -1,17 +1,16 @@
 import os
 import sys
-import csv
 import pysam
 import argparse
-import dataclasses
-from typing import List
+from typing import List, Union
 from pysam import AlignmentFile
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from argparse import RawTextHelpFormatter
 from mapping_stats.lib.refmap import RefMap
 from mapping_stats.lib.bio import get_alignment_tag
 from mapping_stats.lib.stats import CoreStats, CorrelationStats
 from mapping_stats.lib.const import UNKNOWN, UNMAPPED, UNCLASSIFIED
-from mapping_stats.lib.core import BaseSubcommand, UpdatingStatsItem
+from mapping_stats.lib.core import BaseSubcommand, MappingStatsContainer
 from mapping_stats.lib.utils import (
     write_data,
     load_data,
@@ -23,7 +22,7 @@ from mapping_stats.lib.utils import (
 
 
 @dataclass
-class BaseAlignedReference(object):
+class AlignedReferenceAttributes(object):
     """
     A base dataclass providing descriptive and required fields for
     ObservedReference.
@@ -39,7 +38,7 @@ class BaseAlignedReference(object):
 
 
 @dataclass
-class AlignedReference(CoreStats, BaseAlignedReference, UpdatingStatsItem):
+class AlignedReference(CoreStats, MappingStatsContainer, AlignedReferenceAttributes):
     """
     Represents an instance of a reference sequence to which reads from
     a given group (where group means binned by barcode, run_id and reference
@@ -48,11 +47,9 @@ class AlignedReference(CoreStats, BaseAlignedReference, UpdatingStatsItem):
     """
 
     # Optional optimisation
-    __slots__ = get_data_slots(BaseAlignedReference, CoreStats)
+    __slots__ = get_data_slots(AlignedReferenceAttributes, CoreStats)
 
-    def update(
-        self, aln: pysam.AlignedSegment, refmap: RefMap, *args, **kwargs
-    ) -> None:
+    def update(self, aln: pysam.AlignedSegment, refmap: RefMap) -> None:
         self._update_core_stats(self, aln, refmap)
 
     @staticmethod
@@ -80,16 +77,12 @@ class AlignedReference(CoreStats, BaseAlignedReference, UpdatingStatsItem):
 
         return old
 
-    def __add__(self, new):
+    def add(self, new, refmap: RefMap):
         return self._add(self, new)
-
-    @classmethod
-    def fromdict(cls, data: dict):
-        return cls(**data)
 
 
 @dataclass
-class BaseAlignmentGroup(object):
+class AlignmentGroupAttributes(object):
     """
     A base dataclass providing descriptive and required fields for
     ObservedGroup.
@@ -103,13 +96,11 @@ class BaseAlignmentGroup(object):
     name: str
     run_id: str
     barcode: str
-    references: dict = field(default_factory=lambda: {})
-    _reference_class = AlignedReference
 
 
 @dataclass
 class AlignmentGroup(
-    CoreStats, CorrelationStats, BaseAlignmentGroup, UpdatingStatsItem
+    CoreStats, CorrelationStats, MappingStatsContainer, AlignmentGroupAttributes
 ):
     """
     Represents a set of binned alignments by reference filename, run_id
@@ -118,57 +109,36 @@ class AlignmentGroup(
     by individual aligned reference sequence).
     """
 
+    _child_type = AlignedReference
+
     # Optional optimisation
-    __slots__ = get_data_slots(BaseAlignmentGroup, CorrelationStats, CoreStats)
+    __slots__ = get_data_slots(AlignmentGroupAttributes, CorrelationStats, CoreStats)
 
-    def update(self, aln: pysam.AlignedSegment, refmap: RefMap, *args, **kwargs):
+    def update(self, aln: pysam.AlignedSegment, refmap: RefMap):
         ref_name = aln.reference_name or UNMAPPED
-
-        # Get or create the reference
-        reference = self.references.get(ref_name)
+        reference = self.children.get(ref_name)
         if not reference:
             length = refmap.get_ref_length(ref_name) or 0
-            reference = self._reference_class(name=ref_name, length=length)
-            self.references[ref_name] = reference
+            reference = AlignedReference(name=ref_name, length=length)
+            self.children[ref_name] = reference
         reference.update(aln, refmap)
 
-        self._reference_class._update_core_stats(self, aln, refmap)
-        self.update_correlations(self.references, refmap)
+        AlignedReference._update_core_stats(self, aln, refmap)
+        self.update_correlations(self.children, refmap)
 
-    def __add__(self, new):
-        for rn, rv in new.references.items():
-            if not self.references.get(rn):
-                self.references[rn] = rv
+    def add(self, new, refmap: RefMap):
+        for rn, rv in new.children.items():
+            if not self.children.get(rn):
+                self.children[rn] = rv
             else:
-                self.references[rn] += rv
-        self._reference_class._add(self, new)
+                self.children[rn] += rv
+        self._child_type._add(self, new)
+        self.update_correlations(self.children, refmap)
         return self
 
-    @classmethod
-    def fromdict(cls, data: dict):
-        for rn, rv in data.get("references", {}).items():
-            data["references"][rn] = cls._reference_class.fromdict(rv)
-        return cls(**data)
-
 
 @dataclass
-class BaseAlignments(object):
-    """
-    A base dataclass providing descriptive and required fields for
-    Observed objects.
-
-    Note:
-    These fields exist in a separate class to enable them to be
-    placed at the beginning of the inheritance chain, which is
-    necessary because they do not have default values.
-    """
-
-    groups: dict = field(default_factory=lambda: {})
-    _group_class = AlignmentGroup
-
-
-@dataclass
-class Alignments(BaseAlignments, UpdatingStatsItem):
+class Alignments(CoreStats, CorrelationStats, MappingStatsContainer):
     """
     Represents a set of alignments made to some group of reference
     sequences contained by any number of reference files. Bins each
@@ -178,14 +148,17 @@ class Alignments(BaseAlignments, UpdatingStatsItem):
     each group.
     """
 
-    # Optional optimisation
-    __slots__ = get_data_slots(BaseAlignments)
+    _child_type = AlignmentGroup
 
-    def update(
-        self, aln: pysam.AlignedSegment, refmap: RefMap, *args, **kwargs
-    ) -> None:
-        group = self._assign_group(aln, refmap=refmap)
-        group.update(aln, refmap, *args, **kwargs)
+    # Optional optimisation
+    __slots__ = get_data_slots(CoreStats, CorrelationStats, MappingStatsContainer)
+
+    def update(self, aln: pysam.AlignedSegment, refmap: RefMap) -> None:
+        AlignedReference._update_core_stats(self, aln, refmap)
+        self.update_correlations(self.children, refmap)
+
+        group = self._assign_group(aln, refmap)
+        group.update(aln, refmap)
 
     def _assign_group(self, aln: pysam.AlignedSegment, refmap: RefMap):
         reference = aln.reference_name
@@ -194,35 +167,25 @@ class Alignments(BaseAlignments, UpdatingStatsItem):
         barcode = get_alignment_tag(aln, "BC", UNCLASSIFIED)
         group_name = get_group_name(filename, run_id, barcode)
 
-        group = self.groups.get(group_name)
+        group = self.children.get(group_name)
         if not group:
             # If we have not already constructed a group
             # object do so now
-            group = self._group_class(
-                name=filename,
-                run_id=run_id,
-                barcode=barcode,
-            )
-            self.groups[group_name] = group
+            group = AlignmentGroup(name=filename, run_id=run_id, barcode=barcode)
+            self.children[group_name] = group
 
         return group
 
-    def __add__(self, new):
-        for gn, gv in new.groups.items():
-            if not self.groups.get(gn):
-                self.groups[gn] = gv
+    def add(self, new, refmap: RefMap):
+        for gn, gv in new.children.items():
+            if not self.children.get(gn):
+                self.children[gn] = gv
             else:
-                self.groups[gn] += gv
+                self.children[gn] += gv
         return self
 
-    @classmethod
-    def fromdict(cls, data: dict):
-        for gn, gv in data.get("groups", {}).items():
-            data["groups"][gn] = cls._group_class.fromdict(gv)
-        return cls(**data)
 
-
-class GatherMappingStats(BaseSubcommand):
+class CountMappingStats(BaseSubcommand):
     """
     A subcommand that runs a process designed to scan alignments
     made in SAM format and accumulate many useful statistics which are
@@ -232,7 +195,7 @@ class GatherMappingStats(BaseSubcommand):
     def __init__(
         self,
         sam_path: str,
-        out_path: str,
+        out_path: Union[str, None],
         json_path: str,
         fasta_paths: List[str],
         exp_counts_path: str = None,
@@ -241,10 +204,11 @@ class GatherMappingStats(BaseSubcommand):
         self.out_path = out_path
         self.sam_path = sam_path
         self.fasta_paths = fasta_paths
-        self.refmap = RefMap(fasta_paths, exp_counts_path)
 
         self.records = AlignmentFile(sam_path, "r")
-        self.outfile = AlignmentFile(out_path, "w", template=self.records)
+        if out_path:
+            self.outfile = AlignmentFile(out_path, "w", template=self.records)
+        self.refmap = RefMap(fasta_paths, exp_counts_path)
 
         self.observed = self.load()
         self.update()
@@ -256,47 +220,54 @@ class GatherMappingStats(BaseSubcommand):
         if not os.path.exists(self.json_path):
             return Alignments()
         data = load_data(self.json_path)
-        return Alignments.fromdict(data)
+        return Alignments.fromdict(**data)
 
     def update(
         self,
     ) -> None:
         for aln in self.records.fetch(until_eof=True):
-            if self.outfile:
+            if self.out_path:
                 self.outfile.write(aln)
-
-            self.observed.update(aln, refmap=self.refmap)
+            self.observed.update(aln, self.refmap)
 
     def write(
         self,
     ) -> None:
-        data = dataclasses.asdict(self.observed)
+        data = self.observed.asdict()
         write_data(self.json_path, data)
 
     @classmethod
     def execute(cls, argv) -> None:
         parser = argparse.ArgumentParser(
-            description="Gather mapping stats from a SAM/BAM file"
+            description="Gather mapping stats from a SAM/BAM file",
+            formatter_class=RawTextHelpFormatter,
         )
 
         parser.add_argument(
             "-s",
-            "--SAM",
+            "--sam",
             default=sys.stdin,
             help="Input sam/bam file. (default: stdin)",
         )
 
         parser.add_argument(
-            "-o", "--OUT", default="-", help="Output sam file. (default: stdout)"
+            "-o",
+            "--out",
+            default=None,
+            help="Output sam file. Use - for piping out. (default: None)",
         )
 
         parser.add_argument(
-            "-j", "--JSON", required=False, default="mapping-stats.json"
+            "-j",
+            "--json",
+            required=False,
+            default="stats.mapula.json",
+            help="Name of the output json (default: stats.mapula.json)",
         )
 
         parser.add_argument(
-            "-f",
-            "--FASTA",
+            "-r",
+            "--refs",
             nargs="*",
             required=True,
             help="List of references to which alignments have been made",
@@ -304,7 +275,7 @@ class GatherMappingStats(BaseSubcommand):
 
         parser.add_argument(
             "-e",
-            "--EXP",
+            "--exp",
             required=False,
             default=None,
             help="A .CSV file containing expected counts by reference name",
@@ -312,9 +283,9 @@ class GatherMappingStats(BaseSubcommand):
 
         args = parser.parse_args(argv)
         cls(
-            sam_path=args.SAM,
-            out_path=args.OUT,
-            json_path=args.JSON,
-            fasta_paths=args.FASTA,
-            exp_counts_path=args.EXP,
+            sam_path=args.sam,
+            out_path=args.out,
+            json_path=args.json,
+            fasta_paths=args.refs,
+            exp_counts_path=args.exp,
         )

@@ -1,6 +1,6 @@
 import sys
 import argparse
-from mapping_stats.gather import GatherMappingStats
+from mapping_stats.count import CountMappingStats
 from mapping_stats.aggregate import AggregateMappingStats
 
 
@@ -27,7 +27,7 @@ Available subcommands are:
         getattr(self, args.command)(sys.argv[2:])
 
     def gather(self, argv):
-        GatherMappingStats.execute(argv)
+        CountMappingStats.execute(argv)
 
     def aggregate(self, argv):
         AggregateMappingStats.execute(argv)

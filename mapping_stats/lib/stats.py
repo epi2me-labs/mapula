@@ -206,7 +206,7 @@ class CorrelationStats(object):
     pearson: float = 0
     pearson_p: float = 0
 
-    def update_correlations(self, references: CoreStats, refmap: RefMap):
+    def update_correlations(self, references: dict, refmap: RefMap):
         expected_references = []
         for k, v in references.items():
             if exp_count := refmap.get_ref_expected_count(k):
