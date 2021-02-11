@@ -60,7 +60,7 @@ push-github:
         # Make a github release page
         - pip3 install git+https://github.com/epi2me-labs/github_release.git
         - github_release ${CI_PROJECT_NAME} ${CI_COMMIT_TAG} CHANGELOG.md ${LABS_BOT_GH_TOKEN}
-          --artifacts ont-epi2melabs-installer-*-win10.exe ont-epi2melabs-launcher-*.deb ont-epi2melabs-launcher-*-macos.dmg ont-epi2melabs-launcher-*.x86_64.rpm
+          --artifacts dist/*.tar.gz
     only:
         - tags
         
