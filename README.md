@@ -1,4 +1,4 @@
-![Oxford Nanopore Technologies logo](https://github.com/epi2me-labs/mapping-stats/raw/master/images/ONT_logo_590x106.png)
+![Oxford Nanopore Technologies logo](https://github.com/epi2me-labs/mapula/raw/master/images/ONT_logo_590x106.png)
 
 
 # Mapula
