@@ -9,7 +9,7 @@ Mapula provides several subcommands, use `--help` with each
 one to find detailed usage instructions.
 
 ## Installation
-
+Count mapula can be installed following the usual Python tradition:
 ```
 pip install mapula
 ```
@@ -96,7 +96,7 @@ By default, a `.json` file is produced, which has a nested structure, as per the
 {
     [group_name]: {
       ...group_stats,
-      children {
+      references {
         [reference_name]: {
           ...reference_stats
         },
@@ -117,10 +117,11 @@ Also by default, a set of `.csv` files are created which provide a more minimal 
 By default, they are named:
 
 1) `groups.mapula.csv`
-2) `reference.mapula.csv`
+2) `refs.mapula.csv`
 
 They contain the same overall stats as the `.json` file, but without the inclusion of the frequency distributions for accuracy, coverage, read length and read quality. However, the stats derived from these distributions, i.e. read n50, median accuracy, median quality and cov80 are retained.
 
+---
 
 Help
 ----
