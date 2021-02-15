@@ -1,9 +1,12 @@
 import math
 import pysam
+import numpy as np
 from typing import Union, Iterable, List
 from mapula.lib.const import UNKNOWN
 
 LOOKUP = [pow(10, -0.1 * q) for q in range(100)]
+BASE_ACCS = np.array([float(format(x * 0.1, ".2f")) for x in range(1001)])
+BASE_QUALS = np.array([float(format(x * 0.1, ".2f")) for x in range(600)])
 
 
 def get_alignment_tag(
@@ -18,36 +21,15 @@ def get_alignment_tag(
     return alignment.get_tag(tag) if alignment.has_tag(tag) else default
 
 
-def get_median_from_frequency_dist(arr: Iterable, width: Union[int, float]):
+def get_median_from_frequency_dist(val, freq):
     """
     Returns the median value from an array whose
     positions represent frequency counts of values
     at that index in a given range.
     """
-    arr_sum: int = sum(arr)
-    half_way_pos = arr_sum / 2
-    is_odd = bool(arr_sum % 2)
-
-    lower = None
-
-    accumulator = 0
-    for idx, count in enumerate(arr):
-        accumulator += count
-
-        if accumulator > half_way_pos:
-            if lower is not None:
-                avg = ((lower * width) + (idx * width)) / 2
-                return float(format(avg, ".2f"))
-
-            return float(format(idx * width, ".2f"))
-
-        if accumulator == half_way_pos:
-            if is_odd:
-                return float(format(idx * width, ".2f"))
-
-            if lower is None:
-                lower = idx
-                continue
+    ord = np.argsort(val)
+    cdf = np.cumsum(freq[ord])
+    return val[ord][np.searchsorted(cdf, cdf[-1] // 2)]
 
 
 def get_alignment_accuracy(alignment: pysam.AlignedSegment):
@@ -116,12 +98,6 @@ def get_alignment_mean_qscore(scores: List[int]) -> Union[float, None]:
     the probabilities associated with the phred scores
     provided.
     """
-    if scores is None:
-        return None
-
-    if not scores:
-        return 0.0
-
     sum_prob = 0.0
     for val in scores:
         sum_prob += LOOKUP[val]
