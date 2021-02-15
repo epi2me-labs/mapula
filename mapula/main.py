@@ -1,7 +1,6 @@
 import sys
 import argparse
 from mapula.count import CountMappingStats
-from mapula.aggregate import AggregateMappingStats
 
 
 class MappingStats(object):
@@ -12,7 +11,6 @@ class MappingStats(object):
 
 Available subcommands are:
    count        Count mapping stats from a SAM/BAM file
-   aggregate    Combine mapping stats .JSON outputs
 """,
         )
 
@@ -28,9 +26,6 @@ Available subcommands are:
 
     def count(self, argv):
         CountMappingStats.execute(argv)
-
-    def aggregate(self, argv):
-        AggregateMappingStats.execute(argv)
 
 
 def run_main():

@@ -1,318 +1,301 @@
 import os
 import sys
+import tqdm
 import pysam
 import argparse
+import numpy as np
 import pandas as pd
-from typing import Union, Dict
 from pysam import AlignmentFile
-from mapula.lib.refmap import RefMap
-from mapula.lib.bio import get_alignment_tag
-from mapula.lib.const import UNKNOWN, UNMAPPED, UNCLASSIFIED
-from mapula.lib.stats import (
-    BaseAlignmentStats,
-    CorrelationStats,
-    AlignedCoverageStats
+from dataclasses import dataclass
+from typing import Union, Dict, List
+from scipy.stats import pearsonr, spearmanr
+from mapula.lib.const import (
+    UNKNOWN,
+    UNMAPPED,
+    UNCLASSIFIED,
+    DISTS,
+    Groupers,
+    Format
 )
 from mapula.lib.utils import (
+    get_total_alignments,
     parse_cli_key_value_pairs,
     errprint,
     write_data,
-    load_data,
-    get_group_name
+)
+from mapula.lib.bio import (
+    BASE_ACCS,
+    BASE_QUALS,
+    get_alignment_tag,
+    get_alignment_mean_qscore,
+    get_median_from_frequency_dist,
+    get_alignment_accuracy,
+    get_n50_from_frequency_dist,
+    get_alignment_coverage,
 )
 
 
-class AlignedReference(BaseAlignmentStats):
-    NAME = 'name'
-    LENGTH = 'length'
+@dataclass
+class TrackedReference(object):
+    group: str
+    filename: str
+    length: int
+    expected_count: int
 
-    IDENT = (
-        NAME,
-        LENGTH
-    )
 
-    DEFAULTS = {
-        **BaseAlignmentStats.DEFAULTS,
-    }
+class ObservationGroup():
 
     def __init__(
         self,
-        name: str,
-        length: int,
-        refmap: RefMap,
-        **defaults
+        # Ident
+        name,
+        identity,
+        # Tracked
+        base_pairs=0,
+        observations=0,
+        primary_count=0,
+        secondary_count=0,
+        supplementary_count=0,
+        read_n50=0,
+        cov80_count=0,
+        cov80_percent=0,
+        median_accuracy=0,
+        median_quality=0,
+        alignment_accuracies=None,
+        alignment_coverages=None,
+        aligned_qualities=None,
+        read_lengths=None,
+        # Optional (ident dependent)
+        has_counts: bool = False,
+        tracked_references: Dict[str, TrackedReference] = {},
+        observed_references: Dict[str, int] = {}
     ) -> None:
         """
-        Represents an instance of a reference sequence to 
-        which reads have been aligned, and tracks many 
+        Represents an instance of a reference sequence to
+        which reads have been aligned, and tracks many
         with respect to the alignments.
         """
-        self.refmap = refmap
+        self.name = name
+        self.identity = identity
 
-        super(AlignedReference, self).__init__(
-            name=name,
-            length=length,
-            **(defaults or self.DEFAULTS)
-        )
+        self.base_pairs = base_pairs
+        self.observations = observations
+        self.primary_count = primary_count
+        self.secondary_count = secondary_count
+        self.supplementary_count = supplementary_count
+
+        self.read_n50 = read_n50
+        self.cov80_count = cov80_count
+        self.cov80_percent = cov80_percent
+        self.median_accuracy = median_accuracy
+        self.median_quality = median_quality
+
+        self.alignment_accuracies = (
+            alignment_accuracies or list([0] * 1001))
+        self.alignment_coverages = (
+            alignment_coverages or list([0] * 101))
+        self.aligned_qualities = (
+            aligned_qualities or list([0] * 600))
+        self.read_lengths = (
+            read_lengths or list([0] * 1000))
+
+        self.has_counts = has_counts
+        self.spearmans_rho: float = 0
+        self.spearmans_rho_pval: float = 0
+        self.pearson: float = 0
+        self.pearson_pval: float = 0
+
+        self.observed_references = observed_references
+        self.tracked_references = tracked_references
 
     #
-    # Basic attributes
+    # Speedups
     #
-    @property
-    def name(self):
-        return self._data[self.NAME]
-
-    @name.setter
-    def name(self, value):
-        self._data[self.NAME] = value
-
-    @property
-    def length(self):
-        return self._data[self.LENGTH]
-
-    @length.setter
-    def length(self, value):
-        self._data[self.LENGTH] = value
-
-    #
-    # Methods
-    #
-    def update(self, aln: pysam.AlignedSegment) -> None:
-        """
-        Given the input alignment, re-calculates
-        basic statistics.
-        """
-        self.update_basic_stats(aln)
-
-    @classmethod
-    def fromdict(cls, refmap: RefMap, **data: dict):
-        """
-        Creates an AlignedReference object from
-        a dictionary.
-        """
-        name = data.pop(cls.NAME)
-        length = data.pop(cls.LENGTH)
-        return cls(name, length, refmap, **data)
-
-    def todict(self, output_dists=True):
-        """
-        Serialises this object to a dictionary
-        format.
-        """
-        data = {**self.data}
-        if not output_dists:
-            data = {
-                k: v for k, v in data.items()
-                if k not in self.DISTS
-            }
-
-        return data
-
-    def __add__(self, new):
-        """
-        Given another AlignedReference, adds the
-        values of its stats properties to self.
-        """
-        return self.add_basic_stats(new)
-
-
-class AlignmentGroup(
-    BaseAlignmentStats,
-    AlignedCoverageStats,
-    CorrelationStats
-):
-    NAME = 'name'
-    RUN_ID = 'run_id'
-    BARCODE = 'barcode'
-    REFERENCES = 'references'
-
-    DEFAULTS = {
-        **AlignedCoverageStats.DEFAULTS,
-        **BaseAlignmentStats.DEFAULTS,
-        **CorrelationStats.DEFAULTS
-    }
-
-    IDENT = (
-        NAME, RUN_ID, BARCODE
+    __slots__ = (
+        'name', 'base_pairs', 'observations',
+        'primary_count', 'secondary_count', 'supplementary_count',
+        'cov80_count', 'cov80_percent', 'median_accuracy',
+        'median_quality', 'alignment_accuracies', 'read_n50',
+        'alignment_coverages', 'aligned_qualities', 'read_lengths',
+        '__dict__', 'identity'
     )
 
-    def __init__(
+    def update(
         self,
-        name: str,
-        run_id: str,
-        barcode: str,
-        refmap: RefMap,
-        use_corrs: bool = False,
-        references={},
-        **data
+        aln: pysam.AlignedSegment,
     ) -> None:
-        """
-        Represents a set of binned alignments by reference 
-        name, run_id and barcode if available. Tracks 
-        both summary statistics (i.e. representing the whole 
-        group) as well as per-refefence statistics (i.e. 
-        broken down by individual aligned reference sequences).
-        """
-        self.refmap = refmap
-        self.references = references
-        self.use_corrs = use_corrs
+        if aln.is_supplementary:
+            self.supplementary_count += 1
+            return
 
-        if not data:
-            data = {
-                **AlignedCoverageStats.DEFAULTS,
-                **BaseAlignmentStats.DEFAULTS,
-            }
+        if aln.is_secondary:
+            self.secondary_count += 1
+            return
 
-            if use_corrs:
-                data.update(
-                    CorrelationStats.DEFAULTS
-                )
+        length = aln.query_length
 
-        super(AlignmentGroup, self).__init__(
-            name=name, run_id=run_id, barcode=barcode, **data
+        self.base_pairs += length
+        self.observations += 1
+
+        try:
+            # E.g. LEN: 1000 bins, 50 bin width, 50,000 max length
+            self.read_lengths[int(length / 50)] += 1
+            self._update_read_n50()
+        except IndexError:
+            pass
+
+        if aln.is_unmapped:
+            return
+
+        self.primary_count += 1
+        reference = aln.reference_name
+
+        try:
+            self.observed_references[reference] += 1
+        except KeyError:
+            self.observed_references[reference] = 1
+
+        try:
+            quality = get_alignment_mean_qscore(
+                aln.query_alignment_qualities)
+            self.aligned_qualities[int(quality / 0.1)] += 1
+            self._update_median_quality()
+        except (IndexError, TypeError):
+            pass
+
+        try:
+            accuracy = get_alignment_accuracy(aln) or 0
+            self.alignment_accuracies[int(accuracy / 0.1)] += 1
+            self._update_median_accuracy()
+        except (IndexError, TypeError):
+            pass
+
+        try:
+            coverage = get_alignment_coverage(
+                aln.reference_length, length
+            ) or 0
+            self.alignment_coverages[int(coverage)] += 1
+
+            if coverage >= 80:
+                self.cov80_count += 1
+
+            self._update_cov80_percent()
+        except IndexError:
+            pass
+
+        if self.has_counts:
+            self._update_correlations()
+
+    def _update_read_n50(self):
+        self.read_n50 = get_n50_from_frequency_dist(
+            self.read_lengths, 50, self.base_pairs
         )
 
-    #
-    # Basic attributes
-    #
-    @property
-    def name(self):
-        return self._data[self.NAME]
-
-    @name.setter
-    def name(self, value):
-        self._data[self.NAME] = value
-
-    @property
-    def run_id(self):
-        return self._data[self.RUN_ID]
-
-    @run_id.setter
-    def run_id(self, value):
-        self._data[self.RUN_ID] = value
-
-    @property
-    def barcode(self):
-        return self._data[self.BARCODE]
-
-    @barcode.setter
-    def barcode(self, value):
-        self._data[self.BARCODE] = value
-
-    #
-    # Methods
-    #
-    def update(self, aln: pysam.AlignedSegment):
-        """
-        Given the input alignment, re-calculates
-        group and per-reference statistics.
-        """
-        self.update_references(aln)
-        self.update_basic_stats(aln)
-        self.update_coverage_stats(
-            aln, self.refmap, self.read_count
-        )
-        if self.use_corrs and self.refmap.has_counts:
-            self.update_correlations()
-
-    def update_references(self, aln: pysam.AlignedSegment):
-        """
-        Given an alignment, finds or creates the 
-        correct reference instance within this group
-        and updates it.
-        """
-        ref_name = aln.reference_name or UNMAPPED
-        reference = self.references.get(ref_name)
-        if not reference:
-            length = self.refmap.get_ref_length(
-                ref_name) or 0
-            reference = AlignedReference(
-                name=ref_name,
-                length=length,
-                refmap=self.refmap
-            )
-            self.references[ref_name] = reference
-        reference.update(aln)
-
-    def update_correlations(self):
-        """
-        Handles updating correlation specific
-        statistics.
-        """
-        obs = {
-            k: v.read_count
-            for k, v in self.references.items()
-        }
-        exp = {
-            k: v['expected_count']
-            for k, v in self.refmap.items()
-        }
-
-        self.update_correlation_stats(obs, exp)
-
-    @classmethod
-    def fromdict(
-        cls,
-        refmap: RefMap,
-        use_corrs,
-        **data: dict
-    ):
-        """
-        Creates an AlignedGroup object and
-        nested AlignedReference objects from
-        a dictionary.
-        """
-        name = data.pop('name')
-        run_id = data.pop('run_id')
-        barcode = data.pop('barcode')
-        references = data.pop('references')
-
-        for key, val in references.items():
-            rname = val.pop('name')
-            rlength = val.pop('length')
-            references[key] = AlignedReference(
-                rname, rlength, refmap, **val
-            )
-
-        if not use_corrs:
-            errprint(
-                "[Warning]: expected counts have not been "
-                "provided but the existing data contains "
-                "correlation metrics. Quitting."
-            )
-            sys.exit(1)
-
-        return cls(
-            name, run_id, barcode, refmap,
-            use_corrs, references, **data
+    def _update_median_accuracy(self):
+        self.median_accuracy = get_median_from_frequency_dist(
+            BASE_ACCS, np.array(self.alignment_accuracies)
         )
 
-    def todict(self):
+    def _update_cov80_percent(self):
+        self.cov80_percent = (
+            100 * self.cov80_count / self.observations
+        )
+
+    def _update_median_quality(self):
+        self.median_quality = get_median_from_frequency_dist(
+            BASE_QUALS, np.array(self.aligned_qualities)
+        )
+
+    def _update_correlations(self):
+        observed = []
+        expected = []
+        for key, val in self.tracked_references.items():
+            expected.append(val.expected_count)
+            observed.append(self.observed_references.get(key, 0))
+
+        coef, p = spearmanr(observed, expected)
+        self.spearmans_rho = coef
+        self.spearmans_rho_pval = p
+
+        coef2, p2 = pearsonr(observed, expected)
+        self.pearson = coef2
+        self.pearson_pval = p2
+
+    def __add__(self, new):
+        if not isinstance(new, self.__class__):
+            raise TypeError
+
+        for attr in (
+            "alignment_count",
+            "read_count",
+            "total_base_pairs",
+            "primary_count",
+            "secondary_count",
+            "supplementary_count",
+            "cov80_count"
+        ):
+            old = getattr(self, attr)
+            new = getattr(self, attr)
+            setattr(self, attr, old + new)
+
+        self.alignment_accuracies = list(map(sum, zip(
+            self.alignment_accuracies, new.alignment_accuracies)))
+        self.alignment_coverages = list(map(sum, zip(
+            self.alignment_coverages, new.alignment_coverages)))
+        self.aligned_qualities = list(map(sum, zip(
+            self.aligned_qualities, new.aligned_qualities)))
+        self.read_lengths = list(map(sum, zip(
+            self.read_lengths, new.read_lengths)))
+
+        self._update_read_n50()
+        self._update_median_quality()
+        self._update_median_accuracy()
+        self._update_cov80_percent()
+
+        if self.has_counts:
+            self.tracked_references.update(
+                new.tracked_references)
+
+            for k, v in new.observed_references.items():
+                if self.observed_references.get(k):
+                    self.tracked_references[k] += v
+                    continue
+                self.observed_references[k] = v
+
+            self._update_correlations
+
+        return self
+
+    def to_dict(self, output_corrs=False):
         """
         Serialises this object to a dictionary
         format.
         """
-        data = {**self.data, self.REFERENCES: {}}
-        for key, val in self.references.items():
-            data[self.REFERENCES][key] = val.todict()
+        corrs = {
+            "spearmans_rho": self.spearmans_rho,
+            "spearmans_rho_pval": self.spearmans_rho_pval,
+            "pearson": self.pearson,
+            "pearson_pval": self.pearson_pval,
+        } if output_corrs else {}
 
-        return data
-
-    def __add__(self, new):
-        """
-        Given another AlignedGroup, adds the
-        values of its stats properties to self.
-        """
-        for rn, rv in new.references.items():
-            if not self.references.get(rn):
-                self.references[rn] = rv
-            else:
-                self.references[rn] += rv
-        self.add_basic_stats(new)
-        self.add_coverage_stats(new, self.read_count)
-        if self.use_corrs:
-            self.update_correlations()
-        return self
+        return {
+            **self.identity,
+            "base_pairs": self.base_pairs,
+            "observations": self.observations,
+            "primary_count": self.primary_count,
+            "secondary_count": self.secondary_count,
+            "supplementary_count": self.supplementary_count,
+            "read_n50": self.read_n50,
+            "cov80_count": self.cov80_count,
+            "cov80_percent": self.cov80_percent,
+            "median_accuracy": self.median_accuracy,
+            "median_quality": self.median_quality,
+            "alignment_accuracies": self.alignment_accuracies,
+            "alignment_coverages": self.alignment_coverages,
+            "aligned_qualities": self.aligned_qualities,
+            "read_lengths": self.read_lengths,
+            **corrs
+        }
 
 
 class CountMappingStats(object):
@@ -322,270 +305,347 @@ class CountMappingStats(object):
         sam: str,
         refs: Dict[str, str],
         counts: Dict[str, str],
-        sam_out: Union[str, None],
-        json_path: str,
+        groupby: List[str],
+        output_sam: Union[str, None],
+        output_name: str,
+        output_format: str
     ) -> None:
         """
-        A subcommand that runs a process designed to 
-        scan alignments made in SAM format and accumulate 
-        many useful statistics which are binned into groups 
-        and reported in JSON format.
+        A subcommand that runs a process designed to
+        scan alignments made in SAM format and accumulate
+        many useful statistics which are binned into groups
+        and reported in CSV or JSON format.
         """
-        errprint("--- Running: Mapula (count)")
+        errprint("Running: Mapula (count)")
 
         self.sam = sam
-        self.refs = parse_cli_key_value_pairs(refs)
-        self.counts = parse_cli_key_value_pairs(counts)
-        self.use_corrs = bool(counts)
-        self.sam_out = sam_out
-        self.json_path = json_path
+        self.groupby = groupby
+        self.output_sam = output_sam
+        self.output_name = output_name
+        self.output_format = output_format
+        self.output_corrs = bool(counts)
+        self.total_records = None
+
+        self.reference_files = parse_cli_key_value_pairs(refs)
+        self.counts_files = parse_cli_key_value_pairs(counts)
 
         try:
+            if self.sam not in [sys.stdin]:
+                self.total_records = get_total_alignments(self.sam)
             self.records = AlignmentFile(sam, "r")
         except OSError:
             errprint(
-                '[Error]: Could not find SAM: {}'.format(
-                    sam
-                )
+                "[Error]: Can't find SAM: {}".format(sam)
             )
             sys.exit(1)
 
-        self.refmaps = self.load_refmaps()
-        self.groups = self.load_groups()
-
-        if sam_out:
-            self.outfile = AlignmentFile(
-                sam_out, "w", template=self.records
+        outfile = None
+        if output_sam:
+            outfile = AlignmentFile(
+                output_sam, "w", template=self.records
             )
 
-        errprint("--- Generating stats")
+        errprint("[1/4] Loading references")
+        self.tracked = self.get_tracked_references(
+            self.reference_files,
+            self.counts_files
+        )
 
-        self.update_groups()
+        errprint("[2/4] Parsing alignments")
+        self.observed = self.get_observed_references(
+            self.groupby,
+            self.counts_files,
+            self.total_records,
+            outfile,
+            self.tracked,
+        )
 
-        errprint("--- Writing data")
-
-        self.write_stats_to_json()
-        self.write_groups_to_csv()
-        self.write_refs_to_csv()
-
-        errprint("--- Operation successful")
-
-    def load_refmaps(self):
-        """
-        Given the reference and counts paths provided, 
-        iterates over each pair and builds RefMap objects. 
-        In addition, makes a RefMap for unmapped.
-        """
-        refmaps = {}
-        for name, ref in self.refs.items():
-            counts = self.counts.get(name)
-            refmaps[name] = RefMap(
-                name, ref, counts,
+        errprint("[3/4] Writing data")
+        if self.output_format in [Format.ALL, Format.JSON]:
+            self.write_stats_to_json(
+                '{}.json'.format(output_name),
+                self.observed,
+                output_corrs=self.output_corrs
             )
-        refmaps[UNMAPPED] = RefMap(UNMAPPED)
-        return refmaps
 
-    def load_groups(self) -> dict:
-        """
-        Instantiate a working state from a .json file, 
-        if path exists, otherwise returns an empty dict.
-        """
-        if not os.path.exists(self.json_path):
-            return {}
+        if self.output_format in [Format.ALL, Format.CSV]:
+            self.write_stats_to_csv(
+                '{}.csv'.format(output_name),
+                self.observed,
+                mask=DISTS,
+                sort=['observations', 'base_pairs'],
+                round_fields={
+                    "cov80_percent": 2, "spearmans_rho": 2,
+                    "spearmans_rho_pval": 2, "pearson": 2,
+                    "pearson_pval": 2
+                },
+                output_corrs=self.output_corrs
+            )
 
-        errprint('[Notice]: Adding to existing data {}.'.format(
-            self.json_path
-        ))
-
-        existing_data = load_data(self.json_path)
-        for key, val in existing_data.items():
-            try:
-                name = val['name']
-                refmap = self.refmaps[name]
-                existing_data[key] = AlignmentGroup.fromdict(
-                    refmap, self.use_corrs, **val)
-            except KeyError:
-                errprint(
-                    "[Error]: existing .json data is malformed"
-                )
-                sys.exit(1)
-        return existing_data
-
-    def update_groups(
+    def get_tracked_references(
         self,
+        reference_files: Dict[str, str],
+        counts_files: Dict[str, str]
+    ) -> Dict:
+        """
+        """
+
+        tracked = {}
+        for name, path in reference_files.items():
+            basename = os.path.basename(path)
+
+            # See if we have counts for this fasta
+            df_counts = None
+            if matching := counts_files.get(name):
+                df_counts = pd.read_csv(matching, index_col=0)
+
+            # Open the fasta and read refs into a dict
+            open_ref = pysam.FastaFile(path)
+            for ref in open_ref.references:
+
+                try:
+                    # Collect expected count data if possible
+                    count = df_counts.at[ref, 'expected_count']
+                except (KeyError, AttributeError):
+                    count = 0
+
+                tracked[ref] = TrackedReference(
+                    group=name,
+                    filename=basename,
+                    length=open_ref.get_reference_length(ref),
+                    expected_count=count
+                )
+
+        # Also create an unmapped
+        # row for binning unaligned reads
+        tracked[UNMAPPED] = TrackedReference(
+            group=UNMAPPED,
+            filename=UNMAPPED,
+            length=0,
+            expected_count=0
+        )
+
+        return tracked
+
+    def get_observed_references(
+        self,
+        mask: List[str],
+        counts_files: Dict[str, str],
+        total_records: Union[int, None],
+        outfile: Union[None, pysam.AlignmentFile],
+        tracked_references: Dict[str, TrackedReference]
+    ) -> Dict:
+        """
+        """
+
+        ticks = tqdm.tqdm(total=total_records, leave=False) or None
+
+        observations = {}
+        for aln in self.records.fetch(until_eof=True):
+
+            if total_records:
+                ticks.update(1)
+
+            if outfile:
+                outfile.write(aln)
+
+            reference = aln.reference_name or UNMAPPED
+            group = tracked_references[reference].group
+            run_id = get_alignment_tag(aln, 'RD', default=UNKNOWN)
+            read_group = get_alignment_tag(aln, 'RG', default=UNKNOWN)
+            barcode = get_alignment_tag(aln, 'BC', default=UNCLASSIFIED)
+
+            identity = {
+                'group': group,
+                'run_id': run_id,
+                'barcode': barcode,
+                'read_group': read_group,
+                'reference': reference
+            }
+
+            obs_name = "-".join(identity[i] for i in mask)
+            obs_ident = {m: identity[m] for m in mask}
+
+            matching_obs = observations.get(obs_name)
+            if not matching_obs:
+                matching_obs = ObservationGroup(obs_name, obs_ident)
+                observations[obs_name] = matching_obs
+
+                # At the moment, the only use for tracking
+                # references within Observations is to be
+                # able to calculate correlations when counts
+                # are provided via CSV. This is only possible
+                # in the situaton where the mask includes "group"
+                # i.e. the reference .fasta in which the current
+                # observed reference sequence resides.
+                if "group" in mask:
+                    matching_obs.has_counts = bool(
+                        "reference" not in mask
+                        and group in counts_files
+                    )
+
+                    if matching_obs.has_counts:
+                        matching_obs.tracked_references = ({
+                            trkname: trkref
+                            for trkname, trkref
+                            in tracked_references.items()
+                            if trkref.group == group
+                        })
+
+            matching_obs.update(aln)
+
+        return observations
+
+    def write_stats_to_json(
+        self,
+        path: str,
+        data: Dict,
+        **kwargs
     ) -> None:
         """
-        Iterates over the alignments contained within
-        the input sam file or stream, and for each one
-        finds the appropriate AlignmentGroup, and calls
-        .update on that group to increment its stats.
         """
-        for aln in self.records.fetch(until_eof=True):
-            if self.sam_out:
-                self.outfile.write(aln)
 
-            self._get_or_create_group(aln).update(aln)
-
-    def _get_or_create_group(self, aln: pysam.AlignedSegment):
-        """
-        Uses the alignment to discover the name of the
-        aligned reference, and from that the group of
-        references to which this alignment belongs. In
-        addition, finds the run_id and barcode information
-        if available for this alignment. Altogether, this
-        data is used to match the correct AlignmentGroup
-        from self.groups if we have already created it, or
-        otherwise creates it on the spot.
-        """
-        reference = aln.reference_name
-        run_id = get_alignment_tag(aln, "RD", UNKNOWN)
-        barcode = get_alignment_tag(aln, "BC", UNCLASSIFIED)
-
-        name = UNMAPPED
-        for name, refmap in self.refmaps.items():
-            if reference in refmap:
-                break
-
-        group_name = get_group_name(name, run_id, barcode)
-        group = self.groups.get(group_name)
-
-        if not group:
-            group = AlignmentGroup(
-                name=name, run_id=run_id, barcode=barcode,
-                refmap=self.refmaps.get(name),
-                use_corrs=self.use_corrs
-            )
-            self.groups[group_name] = group
-
-        return group
-
-    def write_stats_to_json(self) -> None:
-        """
-        Gathers the stats data together for each
-        AlignedGroup in self.groups, and dumps it to file.
-        """
-        data = {
-            key: val.todict()
-            for key, val in self.groups.items()
+        output = {
+            key: val.to_dict(**kwargs)
+            for key, val in data.items()
         }
-        write_data(self.json_path, data)
+        write_data(path, output)
 
-    def write_groups_to_csv(self) -> None:
+    def write_stats_to_csv(
+        self,
+        path: str,
+        data: Dict,
+        mask: List[str],
+        sort: List[str],
+        round_fields: Dict[str, int],
+        **kwargs
+    ) -> None:
         """
-        Gathers the stats data together for each
-        AlignedGroup in self.groups, and dumps 
-        it to file.
         """
-        mask = [
-            *AlignmentGroup.IDENT,
-            *AlignmentGroup.BASIC,
-            *AlignmentGroup.DERIVED,
-            *AlignmentGroup.CORRS
-        ]
 
-        data = []
-        for grp in self.groups.values():
-            data.append({
-                i: j for i, j in grp.todict().items()
-                if i in mask
+        output = []
+        for val in data.values():
+            output.append({
+                i: j for i, j in val.to_dict(**kwargs).items()
+                if i not in mask
             })
 
-        df = pd.DataFrame(data)
-        df = df.sort_values(
-            ['read_count', 'total_base_pairs'], ascending=False)
+        df = pd.DataFrame(output)
+        df = df.sort_values(sort, ascending=False)
         df = df.reset_index(drop=True)
-        df = df.round({"cov80_percent": 2, "spearman": 2,
-                       "spearman_p": 2, "pearson": 2, "pearson_p": 2})
-        df.to_csv('groups.mapula.csv', index=False)
+        df = df.round(round_fields)
+        df.to_csv(path, index=False)
 
-    def write_refs_to_csv(self) -> None:
-        """
-        Gathers the stats data together for each
-        AlignedReference within each group in 
-        self.groups, and dumps it to file.
-        """
-        mask = [
-            *AlignedReference.IDENT,
-            *AlignedReference.BASIC,
-            *AlignedReference.DERIVED,
-        ]
-
-        data = []
-        for grp in self.groups.values():
-            for ref in grp.references.values():
-                data.append({
-                    i: j for i, j in ref.todict().items()
-                    if i in mask
-                })
-
-        df = pd.DataFrame(data)
-        df.sort_values(['read_count', 'total_base_pairs'], ascending=False)
-        df.reset_index(drop=True)
-        df.to_csv('refs.mapula.csv', index=False)
-
-    @classmethod
+    @ classmethod
     def execute(cls, argv) -> None:
         """
-        Parses command line arguments and 
+        Parses command line arguments and
         initialises a CountMappingStats object.
         """
         parser = argparse.ArgumentParser(
             description="Count mapping stats from a SAM/BAM file",
-            formatter_class=argparse.RawDescriptionHelpFormatter
         )
 
         parser.add_argument(
-            "-s",
-            "--sam",
-            help='Alignments in SAM format. By default, this script '
-            'reads alignments from stdin. However, using this flag '
-            'it is possible to pass in a file path.',
+            help=(
+                "Input alignments in SAM format. (Default: stdin)."
+            ),
+            dest="sam",
             default=sys.stdin,
+            metavar='',
+            nargs='?'
         )
 
         parser.add_argument(
             '-r',
-            '--refs',
-            help='Provide reference .fasta files using the syntax: '
-            'name=path_to_ref.',
-            default=[],
-            nargs='*'
+            help=(
+                "Reference .fasta file(s). Format name=path_to_ref."
+            ),
+            dest="refs",
+            required=True,
+            metavar='',
+            nargs='*',
         )
 
         parser.add_argument(
             '-c',
-            '--counts',
-            help='Provide expected counts in csv format using the syntax: '
-            'name=path_to_counts, where name should be equal to a name given '
-            'to --references. Expected column headings: reference,expected_count. '
-            'The reference column should contain the ID of a sequence in the '
-            'corresponding reference file. The expected_count column should '
-            'equal the expected number of observations for that sequence.',
+            help=(
+                "Expected counts CSV(s). Format name=path_to_counts. "
+                "Expected columns: reference,expected_count."
+            ),
+            dest="counts",
             default=[],
+            required=False,
+            metavar='',
             nargs='*'
         )
 
         parser.add_argument(
-            "-o",
-            "--sam_out",
+            '-o',
+            dest="output_sam",
             default=None,
-            help='Outputs a sam file from the parsed alignments. Use - for '
-            'piping out. (default: None)',
+            required=False,
+            metavar='',
+            help=(
+                "Outputs a sam file from the parsed alignments. "
+                "Use - for piping out. (Default: None)."
+            ),
         )
 
         parser.add_argument(
-            "-j",
-            "--json_path",
+            "-f",
+            dest="format",
             required=False,
-            default="stats.mapula.json",
-            help='Name of the output json (default: stats.mapula.json)',
+            default=Format.CSV,
+            choices=Format.choices,
+            metavar='',
+            help=(
+                "Sets the format(s) in which to output results. "
+                "[Choices: csv, json, all] (Default: csv)."
+            )
+        )
+
+        parser.add_argument(
+            "-s",
+            dest="splitby",
+            required=False,
+            default="group,run_id,barcode",
+            choices=Groupers.choices,
+            metavar='',
+            nargs="+",
+            help=(
+                "Split by these criteria, comma separated. "
+                "[Choices: {}] (Default: group,run_id,"
+                "barcode).".format(','.join(Groupers.choices))
+            )
+        )
+
+        parser.add_argument(
+            "-n",
+            dest="name",
+            required=False,
+            default="mapula",
+            metavar='',
+            help=(
+                "Prefix of the output files, if there are any."
+            )
         )
 
         args = parser.parse_args(argv)
+
+        if args.counts and not (Groupers.GROUP in args.splitby):
+            errprint(
+                "If you want to provide expected counts, you "
+                "are required to split by group. ( -s group )"
+            )
+            sys.exit(1)
+
         cls(
             sam=args.sam,
             refs=args.refs,
             counts=args.counts,
-            sam_out=args.sam_out,
-            json_path=args.json_path,
+            groupby=args.splitby,
+            output_sam=args.output_sam,
+            output_name=args.name,
+            output_format=args.format,
         )
