@@ -305,7 +305,7 @@ class CountMappingStats(object):
         sam: str,
         refs: Dict[str, str],
         counts: Dict[str, str],
-        groupby: List[str],
+        splitby: List[str],
         output_sam: Union[str, None],
         output_name: str,
         output_format: str
@@ -319,7 +319,7 @@ class CountMappingStats(object):
         errprint("Running: Mapula (count)")
 
         self.sam = sam
-        self.groupby = groupby
+        self.splitby = splitby
         self.output_sam = output_sam
         self.output_name = output_name
         self.output_format = output_format
@@ -353,7 +353,7 @@ class CountMappingStats(object):
 
         errprint("[2/4] Parsing alignments")
         self.observed = self.get_observed_references(
-            self.groupby,
+            self.splitby,
             self.counts_files,
             self.total_records,
             outfile,
@@ -609,14 +609,14 @@ class CountMappingStats(object):
             "-s",
             dest="splitby",
             required=False,
-            default="group,run_id,barcode",
+            default=[Groupers.GROUP, Groupers.RUN_ID, Groupers.BARCODE],
             choices=Groupers.choices,
             metavar='',
             nargs="+",
             help=(
-                "Split by these criteria, comma separated. "
-                "[Choices: {}] (Default: group,run_id,"
-                "barcode).".format(','.join(Groupers.choices))
+                "Split by these criteria, space separated. "
+                "[Choices: {}] (Default: group run_id "
+                "barcode).".format(' '.join(Groupers.choices))
             )
         )
 
@@ -644,7 +644,7 @@ class CountMappingStats(object):
             sam=args.sam,
             refs=args.refs,
             counts=args.counts,
-            groupby=args.splitby,
+            splitby=args.splitby,
             output_sam=args.output_sam,
             output_name=args.name,
             output_format=args.format,
