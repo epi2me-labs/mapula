@@ -39,13 +39,12 @@ optional arguments:
 An example invocation is as follows:
 
 ```
-mapula count <path_to_sam_or_bam> -r <name>=<path_to_a_reference_fasta>
+mapula count <paths_to_sam_or_bam> -r <name>=<path_to_a_reference_fasta>
 ```
 
-In the above example, name should be a short-hand nickname for the group of reference sequences in your fasta. E.g. `host`. You may provide multiple values for `-r`.
-
-You may also split the alignments by different criteria using `-s`, e.g. `-s read_group reference` to
-group the alignments into rows based on their read_group and aligned reference.
+- You may provide multiple paths to SAM/BAM files.
+- Name should be a short-hand nickname for the group of reference sequences in your fasta. E.g. `host`. You may provide multiple values for `-r`.
+- You may also split the alignments by different criteria using `-s`, e.g. `-s read_group reference` to group the alignments into rows based on their read_group and aligned reference.
 
 ---
 
