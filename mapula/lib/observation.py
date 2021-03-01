@@ -28,19 +28,19 @@ class ObservationGroup():
     def __init__(
         self,
         # Ident
-        name,
-        identity,
+        name: str,
+        identity: dict,
         # Tracked
-        base_pairs=0,
-        observations=0,
-        primary_count=0,
-        secondary_count=0,
-        supplementary_count=0,
-        read_n50=0,
-        cov80_count=0,
-        cov80_percent=0,
-        median_accuracy=0,
-        median_quality=0,
+        base_pairs: int = 0,
+        observations: int = 0,
+        primary_count: int = 0,
+        secondary_count: int = 0,
+        supplementary_count: int = 0,
+        read_n50: int = 0,
+        cov80_count: int = 0,
+        cov80_percent: int = 0,
+        median_accuracy: int = 0,
+        median_quality: int = 0,
         alignment_accuracies=None,
         alignment_coverages=None,
         aligned_qualities=None,
@@ -48,7 +48,8 @@ class ObservationGroup():
         # Optional (ident dependent)
         has_counts: bool = False,
         tracked_references: Dict[str, TrackedReference] = {},
-        observed_references: Dict[str, int] = {}
+        observed_references: Dict[str, int] = {},
+        observed_reference_count: int = 0
     ) -> None:
         """
         Represents an instance of a reference sequence to
@@ -87,6 +88,8 @@ class ObservationGroup():
 
         self.observed_references = observed_references
         self.tracked_references = tracked_references
+        self.observed_reference_count = observed_reference_count
+        self.tracked_reference_count = len(tracked_references)
 
     #
     # Speedups
@@ -103,6 +106,7 @@ class ObservationGroup():
     def update(
         self,
         aln: pysam.AlignedSegment,
+        update_summary_stats: bool = True
     ) -> None:
         if aln.is_supplementary:
             self.supplementary_count += 1
@@ -120,7 +124,6 @@ class ObservationGroup():
         try:
             # E.g. LEN: 1000 bins, 50 bin width, 50,000 max length
             self.read_lengths[int(length / 50)] += 1
-            self._update_read_n50()
         except IndexError:
             pass
 
@@ -134,19 +137,19 @@ class ObservationGroup():
             self.observed_references[reference] += 1
         except KeyError:
             self.observed_references[reference] = 1
+        self.observed_reference_count = len(
+            self.observed_references)
 
         try:
             quality = get_alignment_mean_qscore(
                 aln.query_alignment_qualities)
             self.aligned_qualities[int(quality / 0.1)] += 1
-            self._update_median_quality()
         except (IndexError, TypeError):
             pass
 
         try:
             accuracy = get_alignment_accuracy(aln) or 0
             self.alignment_accuracies[int(accuracy / 0.1)] += 1
-            self._update_median_accuracy()
         except (IndexError, TypeError):
             pass
 
@@ -162,6 +165,14 @@ class ObservationGroup():
             self._update_cov80_percent()
         except IndexError:
             pass
+
+        if update_summary_stats:
+            self._update_summary_stats()
+
+    def _update_summary_stats(self):
+        self._update_read_n50()
+        self._update_median_quality()
+        self._update_median_accuracy()
 
         if self.has_counts:
             self._update_correlations()
@@ -256,6 +267,8 @@ class ObservationGroup():
             "spearmans_rho_pval": self.spearmans_rho_pval,
             "pearson": self.pearson,
             "pearson_pval": self.pearson_pval,
+            "tracked_reference_count": self.tracked_reference_count,
+            "observed_reference_count": self.observed_reference_count
         } if output_corrs else {}
 
         return {

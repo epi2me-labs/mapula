@@ -59,7 +59,8 @@ class CountMappingStats(object):
 
         outfile = None
         if output_sam:
-            outfile = AlignmentFile(output_sam, "w", 
+            outfile = AlignmentFile(
+                output_sam, "w",
                 template=self.alignment_files[0]
             )
 
@@ -215,6 +216,9 @@ class CountMappingStats(object):
                     counts_files, tracked_references
                 )
 
+        for grp in observations.values():
+            grp._update_summary_stats()
+        
         return observations
 
     @staticmethod
@@ -274,8 +278,10 @@ class CountMappingStats(object):
                         in tracked_references.items()
                         if trkref.group == group
                     })
+                    matching_obs.tracked_reference_count = len(
+                        tracked_references)
 
-        matching_obs.update(aln)
+        matching_obs.update(aln, update_summary_stats=False)
         return observations
 
     def write_observations(
