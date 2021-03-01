@@ -218,7 +218,7 @@ class CountMappingStats(object):
 
         for grp in observations.values():
             grp._update_summary_stats()
-        
+
         return observations
 
     @staticmethod
@@ -279,7 +279,7 @@ class CountMappingStats(object):
                         if trkref.group == group
                     })
                     matching_obs.tracked_reference_count = len(
-                        tracked_references)
+                        matching_obs.tracked_references)
 
         matching_obs.update(aln, update_summary_stats=False)
         return observations
