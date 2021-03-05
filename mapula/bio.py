@@ -1,8 +1,8 @@
 import math
 import pysam
 import numpy as np
+from mapula.const import UNKNOWN
 from typing import Union, Iterable, List
-from mapula.lib.const import UNKNOWN
 
 LOOKUP = [pow(10, -0.1 * q) for q in range(100)]
 BASE_ACCS = np.array([float(format(x * 0.1, ".2f")) for x in range(1001)])

@@ -35,22 +35,6 @@ def write_data(path: str, data: dict) -> None:
         json.dump(data, out)
 
 
-def parse_cli_key_value_pairs(arg):
-    """
-    Does what it says on the tin!
-    """
-    try:
-        return {
-            key: value for key, value in (
-                item.split('=') for item in arg
-            )
-        }
-    except ValueError:
-        errprint('Error, invalid format: {}'.format(arg))
-        errprint('Format of extra references must be key=value')
-        sys.exit(1)
-
-
 def get_total_alignments(
     samfile_path: str,
 ):
