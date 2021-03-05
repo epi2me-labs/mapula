@@ -2,16 +2,6 @@ UNMAPPED = "unmapped"
 UNKNOWN = "unknown"
 UNCLASSIFIED = "unclassified"
 
-DISTS = [
-    'alignment_accuracies', 'alignment_coverages',
-    'aligned_qualities', 'read_lengths'
-]
-
-CORRS = [
-    'spearmans_rho', 'spearmans_rho_pval',
-    'pearson', 'pearson_pval'
-]
-
 
 class Pipers(object):
     SAM = 'sam'
