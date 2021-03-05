@@ -31,6 +31,7 @@ class Observation(object):
     read_group: str
     barcode: str
     fasta: str
+    source: str
     length: int
     alignment_type: str
     quality: Union[None, float] = None
@@ -41,6 +42,7 @@ class Observation(object):
     def from_alignment(
         cls,
         aln: pysam.AlignedSegment,
+        alignment_filename: str,
         references: Dict[str, TrackedReference],
         non_primary_stats=False
     ):
@@ -73,7 +75,8 @@ class Observation(object):
 
         return cls(
             reference, run_id, read_group, barcode, fasta,
-            length, alignment_type, quality, coverage, accuracy
+            alignment_filename, length, alignment_type,
+            quality, coverage, accuracy
         )
 
 

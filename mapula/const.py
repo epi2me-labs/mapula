@@ -21,6 +21,7 @@ class Pipers(object):
 
 
 class Groupers(object):
+    SOURCE = 'source'
     FASTA = 'fasta'
     RUN_ID = 'run_id'
     BARCODE = 'barcode'
@@ -28,7 +29,7 @@ class Groupers(object):
     REFERENCE = 'reference'
 
     choices = [
-        FASTA, RUN_ID, BARCODE,
+        SOURCE, FASTA, RUN_ID, BARCODE,
         READ_GROUP, REFERENCE
     ]
 

@@ -6,7 +6,7 @@ import pysam
 import argparse
 import pandas as pd
 from pysam import AlignmentFile
-from typing import Union, Dict, List, TextIO
+from typing import Union, Dict, List, TextIO, Tuple
 from mapula.observation import (
     ObservationGroup, TrackedReference, Observation)
 from mapula.const import (
@@ -58,12 +58,12 @@ class CountMappingStats(object):
         self.alignment_files = self.get_alignment_files(sams)
 
         #
-        # Todo: Refactor into function call
+        # Todo: Refactor into function call, de-uglify, fix headers
         #
         self.outfile = None
         if pipe == Pipers.SAM:
             self.outfile = AlignmentFile(
-                '-', "w", template=self.alignment_files[0])
+                '-', "w", template=self.alignment_files[0][1])
         elif pipe == Pipers.JSON:
             self.outfile = sys.stdout
 
@@ -129,7 +129,7 @@ class CountMappingStats(object):
     @staticmethod
     def get_alignment_files(
         paths: List[str]
-    ) -> List[AlignmentFile]:
+    ) -> List[Tuple[str, AlignmentFile]]:
         """
         Iterates over the paths to SAM/BAM files given
         and created pysam AlignmentFile objects for each,
@@ -138,10 +138,17 @@ class CountMappingStats(object):
         alignment_files = []
         for path in paths:
             try:
-                alignment_files.append(AlignmentFile(path, "r"))
+                name = (
+                    os.path.basename(path) 
+                    if path != sys.stdin else "stdin"
+                )
+                alignment_files.append((
+                    name,
+                    AlignmentFile(path, "r")
+                ))
             except OSError:
                 errprint(
-                    "[Error]: File not found: {}".format(path))
+                    f"[Error]: File not found: {path}")
                 sys.exit(1)
 
         return alignment_files
@@ -219,7 +226,7 @@ class CountMappingStats(object):
 
     def parse_alignments(
         self,
-        alignments_files: List[AlignmentFile],
+        alignments_files: List[Tuple[str, AlignmentFile]],
         pipe: Union[str, None],
         aggregate: bool,
         splitby: List[str],
@@ -239,11 +246,11 @@ class CountMappingStats(object):
         stream_json = bool(pipe == Pipers.JSON)
 
         aggregations = {}
-        for alignment_file in alignments_files:
-            for aln in alignment_file.fetch(until_eof=True):
+        for alname, alhandle in alignments_files:
+            for aln in alhandle.fetch(until_eof=True):
 
                 obs = Observation.from_alignment(
-                    aln, references, stream_json)
+                    aln, alname, references, stream_json)
 
                 if stream_sam:
                     outfile.write(aln)
@@ -276,6 +283,7 @@ class CountMappingStats(object):
         or update an existing one.
         """
         identity = {
+            'source': obs.source,
             'fasta': obs.fasta,
             'run_id': obs.run_id,
             'barcode': obs.barcode,
