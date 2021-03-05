@@ -2,7 +2,6 @@
 
 
 # Mapula
-
 This package provides a command line tool that is able to parse alignments in `SAM` format and produce a range of useful stats.
 
 Mapula provides several subcommands, use `--help` with each
@@ -13,8 +12,8 @@ Count mapula can be installed following the usual Python tradition:
 ```
 pip install mapula
 ```
-## Usage
 
+## Usage
 The main command is `mapula count`. This command can accept one or several input `SAM` or `BAM` files and output various useful statistics.
 
 For available options, see:
@@ -66,6 +65,16 @@ minimap2 -y -ax map-ont <path_to_a_reference_fasta> *_reads.fastq \
   | mapula -r <path_to_a_reference_fasta> -a source fasta run_id barcode -p sam \
   | samtools sort -o sorted.aligned.bam
 ```
+
+## Important: tags
+
+At present, for access to `barcode`, `run_id`, `read_group`, mapula depends on tags being available within the input `SAM` records, as follows:
+- `barcode` = `bc`
+- `run_id` = `rd`
+- `read_group` = `rg`
+
+If these are not available, Mapula will just provide a placeholder of `Unknown`. The minimap2 flag `-y` can carry information from the `.fastq`
+header into the records it creates to faciliate this transfer of information.
 
 ---
 
