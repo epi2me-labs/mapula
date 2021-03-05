@@ -1,17 +1,24 @@
 import sys
 import argparse
 from mapula.count import CountMappingStats
+from mapula.merge import MergeMappingStats
+from mapula.visualise import VisualiseMappingStats
+
+USAGE = (
+    """mapping-stats <command> [<args>]"
+
+Available subcommands are:
+    count        Count mapping stats from a SAM/BAM file
+    plot         Plot mapula count's aggregated json output
+    merge        Combine mapula count's aggregated json outputs
+""")
 
 
 class MappingStats(object):
     def __init__(self):
         parser = argparse.ArgumentParser(
             description="Collects stats from SAM/BAM files",
-            usage="""mapping-stats <command> [<args>]
-
-Available subcommands are:
-   count        Count mapping stats from a SAM/BAM file
-""",
+            usage=USAGE
         )
 
         parser.add_argument("command", help="Subcommand to run")
@@ -26,6 +33,12 @@ Available subcommands are:
 
     def count(self, argv):
         CountMappingStats.execute(argv)
+
+    def plot(self, argv):
+        VisualiseMappingStats.execute(argv)
+
+    def merge(self, argv):
+        MergeMappingStats.execute(argv)
 
 
 def run_main():

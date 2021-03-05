@@ -13,15 +13,22 @@ CORRS = [
 ]
 
 
+class Pipers(object):
+    SAM = 'sam'
+    JSON = 'json'
+
+    choices = [SAM, JSON]
+
+
 class Groupers(object):
-    GROUP = 'group'
+    FASTA = 'fasta'
     RUN_ID = 'run_id'
     BARCODE = 'barcode'
     READ_GROUP = 'read_group'
     REFERENCE = 'reference'
 
     choices = [
-        GROUP, RUN_ID, BARCODE,
+        FASTA, RUN_ID, BARCODE,
         READ_GROUP, REFERENCE
     ]
 
