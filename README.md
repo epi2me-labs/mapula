@@ -15,36 +15,57 @@ pip install mapula
 ```
 ## Usage
 
-At present there is only one subcommand: count (but with more to follow soon!).
+The main command is `mapula count`. This command can accept one or several input `SAM` or `BAM` files and output various useful statistics.
 
+For available options, see:
 ```
-$ mapula count -h
-usage: mapula [-h] -r [[...]] [-c [[...]]] [-o] [-f] [-s  [...]] [-n]
-
-Count mapping stats from a SAM/BAM file
-
-positional arguments:
-                Input alignments in SAM format. (Default: stdin).
-
-optional arguments:
-  -h, --help    show this help message and exit
-  -r [ [ ...]]  Reference .fasta file(s). Format name=path_to_ref.
-  -c [ [ ...]]  Expected counts CSV(s). Format name=path_to_counts. Expected columns: reference,expected_count.
-  -o            Outputs a sam file from the parsed alignments. Use - for piping out. (Default: None).
-  -f            Sets the format(s) in which to output results. [Choices: csv, json, all] (Default: csv).
-  -s  [ ...]    Split by these criteria, comma separated. [Choices: group,run_id,barcode,read_group,reference] (Default: group,run_id,barcode).
-  -n            Prefix of the output files, if there are any.
+mapula count -h
 ```
 
-An example invocation is as follows:
+**Per-alignment (outputs to stdout)**
 
+If you have no need of aggregated stats, you can opt to pipe
+per-alignment stats to stdout (WIP: currently only in json format). Or for instance if mapula is part of a chain of piping operators, you may relay the `SAM` records.
+
+Pipe per-alignment stats to stdout in `.json` format:
 ```
-mapula count <paths_to_sam_or_bam> -r <name>=<path_to_a_reference_fasta>
+mapula count <paths_to_sam_or_bam> -r <path_to_a_reference_fasta> -p json
+```
+Pipe `SAM` records from multiple files to stdout:
+```
+mapula count <paths_to_sam_or_bam> <paths_to_sam_or_bam> -p sam
 ```
 
-- You may provide multiple paths to SAM/BAM files.
-- Name should be a short-hand nickname for the group of reference sequences in your fasta. E.g. `host`. You may provide multiple values for `-r`.
-- You may also split the alignments by different criteria using `-s`, e.g. `-s read_group reference` to group the alignments into rows based on their read_group and aligned reference.
+**Aggregation (outputs to file)**
+
+Aggregated stats can be calculated by enabling the `-a` flag. Alignments are grouped by user-specified criteria, `-s`. These aggregations can then be output 
+in two formats using `-f`. The `.csv` format is the most easily iterpretable for a quick glance, or for onward programmatic analysis the `.json` output contains a more in-depth view of the data.
+
+Output some stats in `.csv` format containing mapping stats:
+```
+mapula count <paths_to_sam_or_bam> -r <path_to_a_reference_fasta> -a
+```
+
+Output some stats in `.csv` format split by `read_group` and `barcode`:
+```
+mapula count <paths_to_sam_or_bam> -r <path_to_a_reference_fasta> -a -s barcode read_group
+```
+
+Output some stats in `.csv` and `.json` format split by `SAM` and reference `fasta`:
+```
+mapula count \
+  <paths_to_sam_or_bam> <paths_to_sam_or_bam> \
+  -r <path_to_a_reference_fasta> <path_to_a_reference_fasta> \
+  -a \
+  -s source fasta
+```
+
+Receive some `SAM` or `BAM` from stdin, calculate some aggregated stats and output in `.csv`, and pipe the `SAM` records onwards:
+```
+minimap2 -y -ax map-ont <path_to_a_reference_fasta> *_reads.fastq \
+  | mapula -r <path_to_a_reference_fasta> -a source fasta run_id barcode -p sam \
+  | samtools sort -o sorted.aligned.bam
+```
 
 ---
 
