@@ -132,7 +132,7 @@ class ObservationGroup():
         self.aligned_qualities: List[int] = defaults.get(
             'aligned_qualities', [0] * 600)
         self.read_lengths: List[int] = defaults.get(
-            'aligned_qualities', [0] * 1000)
+            'read_lengths', [0] * 1000)
 
         if self.correlations:
             self.spearmans_rho: float = defaults.get(
