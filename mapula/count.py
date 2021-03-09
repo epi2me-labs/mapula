@@ -1,17 +1,15 @@
 import os
 import sys
 import tqdm
-import json
 import pysam
 import argparse
 import pandas as pd
 from pysam import AlignmentFile
-from typing import Union, Dict, List, TextIO, Tuple
+from typing import Union, Dict, List, Tuple
 from mapula.observation import (
     ObservationGroup, TrackedReference, Observation)
 from mapula.const import (
     UNMAPPED,
-    Pipers,
     Groupers,
     Format
 )
@@ -28,9 +26,8 @@ class CountMappingStats(object):
         self,
         sams: List[str],
         refs: List[str],
-        counts: str,
-        pipe: Union[str, None],
-        aggregate: bool,
+        counts: Union[None, str],
+        pipe: bool,
         splitby: List[str],
         output_name: str,
         output_format: str
@@ -45,11 +42,9 @@ class CountMappingStats(object):
 
         self.sams = sams
         self.pipe = pipe
-        self.aggregate = aggregate
         self.splitby = splitby
         self.output_name = output_name
         self.output_format = output_format
-        steps = 3 if self.aggregate else 2
 
         self.reference_files = refs
         self.counts_file = counts
@@ -58,16 +53,14 @@ class CountMappingStats(object):
         self.alignment_files = self.get_alignment_files(sams)
 
         #
-        # Todo: Refactor into function call, de-uglify, fix headers
+        # Todo: fix headers
         #
         self.outfile = None
-        if pipe == Pipers.SAM:
+        if self.pipe:
             self.outfile = AlignmentFile(
                 '-', "w", template=self.alignment_files[0][1])
-        elif pipe == Pipers.JSON:
-            self.outfile = sys.stdout
 
-        errprint(f"[1/{steps}] Loading references")
+        errprint("[1/3] Loading references")
         self.references = self.get_references(self.reference_files)
         self.counts = self.get_expected_counts(self.counts_file)
 
@@ -75,11 +68,10 @@ class CountMappingStats(object):
         # Todo: Refactor to make use of coroutines so
         # complexity is distributed across functions
         #
-        errprint(f"[2/{steps}] Parsing alignments")
+        errprint("[2/3] Parsing alignments")
         self.aggregations = self.parse_alignments(
             self.alignment_files,
             self.pipe,
-            self.aggregate,
             self.splitby,
             self.total_alignments,
             self.outfile,
@@ -87,16 +79,13 @@ class CountMappingStats(object):
             self.counts
         )
 
-        if not self.aggregate:
-            return
-
-        if self.aggregate and not self.aggregations:
+        if not self.aggregations:
             errprint(
                 "No aggregations made, is the "
                 "BAM file empty?")
             sys.exit(0)
 
-        errprint(f"[3/{steps}] Writing aggregations")
+        errprint("[3/3] Writing aggregations")
         self.write_aggregations(
             self.output_name,
             self.output_format,
@@ -139,7 +128,7 @@ class CountMappingStats(object):
         for path in paths:
             try:
                 name = (
-                    os.path.basename(path) 
+                    os.path.basename(path)
                     if path != sys.stdin else "stdin"
                 )
                 alignment_files.append((
@@ -221,17 +210,18 @@ class CountMappingStats(object):
                 "'reference,expected_count'"
             )
             sys.exit(1)
-
-        return counts.to_dict()['reference']
+        
+        counts = counts.set_index('reference')
+        counts_dict = counts.to_dict()
+        return counts_dict['expected_count']
 
     def parse_alignments(
         self,
         alignments_files: List[Tuple[str, AlignmentFile]],
-        pipe: Union[str, None],
-        aggregate: bool,
+        pipe: bool,
         splitby: List[str],
         total_records: Union[int, None],
-        outfile: Union[None, TextIO, pysam.AlignmentFile],
+        outfile: Union[None, pysam.AlignmentFile],
         references: Dict[str, TrackedReference],
         counts: Union[None, Dict[str, int]]
     ) -> Dict[str, ObservationGroup]:
@@ -242,30 +232,24 @@ class CountMappingStats(object):
         which calculates and stores alignment stats. 
         """
         ticks = tqdm.tqdm(total=total_records or None, leave=False)
-        stream_sam = bool(pipe == Pipers.SAM)
-        stream_json = bool(pipe == Pipers.JSON)
 
         aggregations = {}
         for alname, alhandle in alignments_files:
             for aln in alhandle.fetch(until_eof=True):
 
                 obs = Observation.from_alignment(
-                    aln, alname, references, stream_json)
+                    aln, alname, references)
 
-                if stream_sam:
+                if pipe:
                     outfile.write(aln)
-                elif stream_json:
-                    outfile.write(f'{json.dumps(obs.__dict__)}\n')
 
-                if aggregate:
-                    self._update_aggregations(
-                        obs, splitby, aggregations, counts)
+                self._update_aggregations(
+                    obs, splitby, aggregations, counts)
 
                 ticks.update(1)
 
-        if aggregate:
-            for grp in aggregations.values():
-                grp._update_summary_stats()
+        for grp in aggregations.values():
+            grp._update_summary_stats()
 
         return aggregations
 
@@ -316,13 +300,13 @@ class CountMappingStats(object):
         """
         if formats in [Format.ALL, Format.JSON]:
             self.write_stats_to_json(
-                '{}.json'.format(name),
+                f'{name}.json',
                 aggregations,
             )
 
         if formats in [Format.ALL, Format.CSV]:
             self.write_stats_to_csv(
-                '{}.csv'.format(name),
+                f'{name}.csv',
                 aggregations,
                 sort=['observations', 'base_pairs'],
                 round_fields={
@@ -414,6 +398,7 @@ class CountMappingStats(object):
                 "Required columns: reference,expected_count."
             ),
             dest="counts",
+            default=None,
             required=False,
             metavar=''
         )
@@ -421,26 +406,11 @@ class CountMappingStats(object):
         parser.add_argument(
             '-p',
             dest="pipe",
-            default=None,
-            choices=Pipers.choices,
-            required=False,
-            metavar='',
-            help=(
-                "Choose what to pipe to stdout, if anything. "
-                "[Choices: sam, json] (Default: None)."
-            ),
-        )
-
-        parser.add_argument(
-            "-a",
-            dest="aggregate",
-            required=False,
             default=False,
             action="store_true",
             help=(
-                "Switch on aggregation, which will group alignments "
-                "and produce summary statistics for each group."
-            )
+                "Enable relay of input SAM records to stdout."
+            ),
         )
 
         parser.add_argument(
@@ -460,13 +430,13 @@ class CountMappingStats(object):
             "-s",
             dest="splitby",
             required=False,
-            default=[Groupers.FASTA],
+            default=Groupers.choices,
             choices=Groupers.choices,
             metavar='',
             nargs="+",
             help=(
-                "If aggregating [-a], split by these criteria, space separated. "
-                "[Choices: {}] (Default: fasta).".format(
+                "Change aggregation behaviour to split by these criteria, "
+                "space separated. [Choices: {}] (Default: all).".format(
                     ' '.join(Groupers.choices))
             )
         )
@@ -484,27 +454,19 @@ class CountMappingStats(object):
 
         args = parser.parse_args(argv)
 
-        if not (args.pipe or args.aggregate):
-            errprint(
-                "[Error]: Neither piping nor aggregating is enabled, "
-                "and 'just spin the wheels' is not a valid option. Choose "
-                "-a or -p <arg>."
-            )
-            sys.exit(1)
-
         if args.counts and (Groupers.REFERENCE in args.splitby):
             errprint(
-                "[Error]: If you want to provide expected counts, you "
-                "cannot also split by reference. ( try -s fasta )"
+                "[Notice]: Correlations won't be calculated "
+                "when providing counts if splitting by reference."
+                "(Because correlations are calculated from a group "
+                "of expected vs observed reference counts)."
             )
-            sys.exit(1)
 
         cls(
             sams=args.sams,
             refs=args.refs,
             counts=args.counts,
             pipe=args.pipe,
-            aggregate=args.aggregate,
             splitby=args.splitby,
             output_name=args.name,
             output_format=args.format,
