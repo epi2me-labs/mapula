@@ -3,6 +3,7 @@ import numpy as np
 from typing import Dict, List
 from dataclasses import dataclass
 from typing import TypedDict, Union
+from mapula.utils import errprint
 from scipy.stats import pearsonr, spearmanr
 from mapula.const import UNKNOWN, UNMAPPED, UNCLASSIFIED
 from mapula.bio import (
@@ -97,12 +98,10 @@ class ObservationGroup():
         self.name = name
         self.identity = identity
         self.counts = counts
-
-        if self.identity.get('reference') and self.counts:
-            raise ValueError(
-                "Counts have been supplied but cannot be "
-                "determined when splitting by reference."
-            )
+        self.correlations = bool(
+            self.counts and not
+            self.identity.get('reference')
+        )
 
         self.base_pairs: int = defaults.get(
             'base_pairs', 0)
@@ -135,7 +134,7 @@ class ObservationGroup():
         self.read_lengths: List[int] = defaults.get(
             'aligned_qualities', [0] * 1000)
 
-        if self.counts:
+        if self.correlations:
             self.spearmans_rho: float = defaults.get(
                 'spearmans_rho', 0)
             self.spearmans_rho_pval: float = defaults.get(
@@ -145,11 +144,10 @@ class ObservationGroup():
             self.pearson_pval: float = defaults.get(
                 'pearson_pval', 0)
 
-        if not self.identity.get('reference'):
-            self.observed_references: dict[str, int] = defaults.get(
-                'observed_references', {})
-            self.observed_reference_count: int = len(
-                self.observed_references)
+        self.observed_references = defaults.get(
+            'observed_references', {})
+        self.observed_reference_count: int = len(
+            self.observed_references)
 
     #
     # Speedups
@@ -191,11 +189,10 @@ class ObservationGroup():
 
         self.primary_count += 1
         reference = obs.reference
-        if not self.identity.get('reference'):
-            try:
-                self.observed_references[reference] += 1
-            except KeyError:
-                self.observed_references[reference] = 1
+        try:
+            self.observed_references[reference] += 1
+        except KeyError:
+            self.observed_references[reference] = 1
 
         try:
             self.aligned_qualities[int(obs.quality / 0.1)] += 1
@@ -261,12 +258,11 @@ class ObservationGroup():
         self._update_median_quality()
         self._update_median_accuracy()
 
-        if self.counts:
+        if self.correlations:
             self._update_correlations()
 
-        if not self.identity.get('reference'):
-            self.observed_reference_count = len(
-                self.observed_references)
+        self.observed_reference_count = len(
+            self.observed_references)
 
     def __add__(self, new):
         if not isinstance(new, self.__class__):
@@ -338,22 +334,15 @@ class ObservationGroup():
             "spearmans_rho_pval": self.spearmans_rho_pval,
             "pearson": self.pearson,
             "pearson_pval": self.pearson_pval,
-        } if self.counts else {})
+        } if self.correlations else {})
 
         optional_fields.update({
             "alignment_accuracies": self.alignment_accuracies,
             "alignment_coverages": self.alignment_coverages,
             "aligned_qualities": self.aligned_qualities,
             "read_lengths": self.read_lengths,
+            "observed_references": self.observed_references
         } if json else {})
-
-        optional_fields.update({
-            "observed_references": self.observed_references,
-        } if json and not self.identity.get('reference') else {})
-
-        optional_fields.update({
-            "observed_reference_count": self.observed_reference_count,
-        } if not self.identity.get('reference') else {})
 
         return {
             **self.identity,
@@ -367,5 +356,6 @@ class ObservationGroup():
             "cov80_percent": self.cov80_percent,
             "median_accuracy": self.median_accuracy,
             "median_quality": self.median_quality,
+            "observed_reference_count": self.observed_reference_count,
             **optional_fields
         }

@@ -3,6 +3,7 @@ import argparse
 from mapula.count import CountMappingStats
 from mapula.merge import MergeMappingStats
 
+
 USAGE = (
     """mapping-stats <command> [<args>]"
 

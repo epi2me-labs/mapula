@@ -29,8 +29,8 @@ class MergeMappingStats(CountMappingStats):
         self.output_name = output_name
         self.output_format = output_format
         self.output_corrs = bool(counts)
-
-        self.counts = self.get_expected_counts(self.counts_file)
+        self.counts = self.get_expected_counts(
+            self.counts_file)
 
         errprint("[1/2] Merging aggregations")
         self.aggregations = self.merge_aggregations(
