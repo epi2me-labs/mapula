@@ -54,6 +54,7 @@ class Observation(object):
         fasta = getattr(references.get(reference, None), 'fasta', UNKNOWN)
 
         length = aln.query_length
+        reference_length = references.get(reference).length
 
         if aln.is_supplementary:
             alignment_type = "supplementary"
@@ -70,7 +71,7 @@ class Observation(object):
         if alignment_type == "primary" or non_primary_stats:
             accuracy = get_alignment_accuracy(aln) or 0
             coverage = get_alignment_coverage(
-                aln.reference_length, length) or 0
+                aln.query_alignment_length, reference_length) or 0
             quality = get_alignment_mean_qscore(
                 aln.query_alignment_qualities) or 0
 
@@ -225,9 +226,12 @@ class ObservationGroup():
         )
 
     def _update_cov80_percent(self):
-        self.cov80_percent = (
-            100 * self.cov80_count / self.observations
-        )
+        try:
+            self.cov80_percent = (
+                100 * self.cov80_count / self.observations
+            )
+        except ZeroDivisionError:
+            self.cov80_percent = 0
 
     def _update_median_quality(self):
         self.median_quality = get_median_from_frequency_dist(

@@ -109,8 +109,8 @@ def get_alignment_mean_qscore(scores: List[int]) -> Union[float, None]:
 
 def get_alignment_coverage(query_alignment_length: int, reference_length: int):
     """
-    Computes the percentage coverage of a given alignment
-    length of the reference length.
+    For a given alignment length, computes the percentage 
+    coverage of the reference.
 
     query_alignment_length: length of the aligned segment
     reference_length: length of the reference
